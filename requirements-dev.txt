@@ -1,4 +1,4 @@
-# Development / test dependencies for nexarag-api.
+# Development / test dependencies for Nexarag-api.
 # Installed ON TOP of requirements.txt — never merged into it (keeps the runtime
 # dependency set minimal and auditable). Usage:
 #   pip install -r requirements.txt -r requirements-dev.txt

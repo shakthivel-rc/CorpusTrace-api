@@ -1,6 +1,6 @@
-# Test + coverage configuration for nexarag-api.
+# Test + coverage configuration for Nexarag-api.
 # NOTE: intentionally has NO [build-system] table — this file is config only, it does
-# not turn nexarag-api into an installable package.
+# not turn Nexarag-api into an installable package.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

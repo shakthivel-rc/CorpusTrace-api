@@ -1,6 +1,6 @@
-# nexarag-api test CI. Separate from buildspec.yml (which only fires a remote deploy) —
+# Nexarag-api test CI. Separate from buildspec.yml (which only fires a remote deploy) —
 # this workflow is the actual gate: install, migrate, test, report.
-name: nexarag-api CI
+name: Nexarag-api CI
 
 on:
   push:
@@ -51,7 +51,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nexarag-api-test-reports
+          name: Nexarag-api-test-reports
           path: |
             coverage.xml
             htmlcov/

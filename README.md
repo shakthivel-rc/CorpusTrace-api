@@ -1,4 +1,4 @@
-# nexarag-api
+# Nexarag-api
 
 FastAPI backend for **NexaRAG** — an authenticated service for uploading documents into a
 knowledge base and asking questions against them, plus a full identity and access-control
@@ -55,7 +55,7 @@ code, not merely forbidden by prompt.
 **One command, from a clean machine with Docker:**
 
 ```bash
-git clone https://github.com/SHAKTHI-HACKER/nexarag-api.git && cd nexarag-api && make setup
+git clone https://github.com/SHAKTHI-HACKER/Nexarag-api.git && cd Nexarag-api && make setup
 ```
 
 That clones the SPA beside this repo, writes a `.env` with freshly generated secrets, brings up

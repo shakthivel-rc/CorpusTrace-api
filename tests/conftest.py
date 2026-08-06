@@ -1,5 +1,5 @@
 """
-Shared pytest configuration and fixtures for nexarag-api.
+Shared pytest configuration and fixtures for Nexarag-api.
 
 CRITICAL ORDERING: environment variables are set at the very top, BEFORE importing any
 application module. core/config.py, db/session.py and utils/token.py all read os.environ

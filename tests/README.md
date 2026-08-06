@@ -1,4 +1,4 @@
-# nexarag-api test suite
+# Nexarag-api test suite
 
 Automated tests for the FastAPI backend. Built on **pytest + httpx (TestClient) +
 pytest-cov + freezegun**, configured in [`../pyproject.toml`](../pyproject.toml) and
@@ -7,7 +7,7 @@ pytest-cov + freezegun**, configured in [`../pyproject.toml`](../pyproject.toml)
 ## How to run
 
 ```bash
-cd nexarag-api
+cd Nexarag-api
 python -m venv .venv && source .venv/bin/activate      # or use the repo-root env/
 pip install -r requirements.txt -r requirements-dev.txt
 
