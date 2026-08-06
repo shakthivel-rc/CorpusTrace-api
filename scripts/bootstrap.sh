@@ -86,12 +86,19 @@ ensure_env() {
         ' "$ENV_FILE" > "$tmp"
         mv "$tmp" "$ENV_FILE"
         info "set ${key} (was blank)"
+        NX_GENERATED_KEYS="${NX_GENERATED_KEYS} ${key}"
         return 0
     fi
 
     printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
     info "set ${key} (was missing)"
+    NX_GENERATED_KEYS="${NX_GENERATED_KEYS} ${key}"
 }
+
+# Which keys this run invented a value for, rather than read from an existing .env. Only the
+# generated ones can disagree with an already-initialised database — see the check before
+# `docker compose up`.
+NX_GENERATED_KEYS=""
 
 # Fail here, with the name of the thing that is wrong, rather than letting compose report it
 # as an interpolation error four steps later.
@@ -183,9 +190,39 @@ need docker
 docker compose version >/dev/null 2>&1 || die "the Docker Compose plugin is required (docker compose v2)."
 docker info >/dev/null 2>&1 || die "the Docker daemon is not reachable — is it running, and are you in the docker group?"
 
+cd "$API_DIR"
+
+# A generated MYSQL_PASSWORD cannot work against a database volume that already exists.
+#
+# MySQL honours MYSQL_USER/MYSQL_PASSWORD *only* while initialising an empty data directory;
+# afterwards the credentials live in the volume and the environment is ignored. The volume
+# belongs to Docker, not to this checkout, so deleting the clone and cloning again leaves it
+# behind — and the new .env then carries a password the database has never heard of.
+#
+# Left to itself that surfaces ~90 seconds later as "container nexarag-api-1 is unhealthy",
+# with the real reason (1045, "Access denied for user 'nexarag'") buried in the API's log
+# behind a SQLAlchemy traceback. Everything the operator can see says the *database* is
+# healthy, because it is: it just does not have this password. So check it here, where the
+# two facts are both in hand, and name the fix.
+if [[ " ${NX_GENERATED_KEYS} " == *" MYSQL_PASSWORD "* ]]; then
+    nx_project="$(docker compose config 2>/dev/null | awk '/^name:/ { print $2; exit }')"
+    nx_volume="${nx_project:-nexarag}_db-data"
+    if docker volume inspect "$nx_volume" >/dev/null 2>&1; then
+        die "this run generated a new MYSQL_PASSWORD, but the database volume '${nx_volume}'
+       already exists and still holds the credentials it was created with. MySQL only reads
+       MYSQL_PASSWORD when it initialises an empty data directory, so the API would fail with
+       'Access denied for user' against a database reporting itself healthy.
+
+       Keep the existing database — restore its .env, or point this checkout at a different
+       project:   COMPOSE_PROJECT_NAME=nexarag-scratch make setup
+
+       Or discard it and start clean:   make reset        (from a checkout)
+                                        docker volume rm ${nx_volume}   (without one)"
+    fi
+fi
+
 bold "3. Building and starting"
 info "first run pulls MySQL and builds two images; expect a few minutes"
-cd "$API_DIR"
 docker compose up -d --build
 
 bold "4. Waiting for the API to report ready"
