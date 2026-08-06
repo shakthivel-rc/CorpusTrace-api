@@ -55,8 +55,13 @@ code, not merely forbidden by prompt.
 **One command, from a clean machine with Docker:**
 
 ```bash
-git clone https://github.com/SHAKTHI-HACKER/Nexarag-api.git && cd Nexarag-api && make setup
+git clone https://github.com/SHAKTHI-HACKER/Nexarag-api.git Nexarag-api && cd Nexarag-api && make setup
 ```
+
+The target directory is named explicitly because git takes it from the URL you typed, not from
+the repository's real name. GitHub resolves repository names case-insensitively and redirects
+the old lowercase URL forever, so `git clone .../nexarag-api.git` succeeds — and silently
+creates `nexarag-api/`, which the next `cd` then fails to find on a case-sensitive filesystem.
 
 That clones the SPA beside this repo, writes a `.env` with freshly generated secrets, brings up
 MySQL, runs the migrations, seeds a superadmin, and starts everything. When it finishes it prints
