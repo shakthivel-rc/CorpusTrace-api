@@ -4,7 +4,7 @@ FastAPI backend for **NexaRAG** — an authenticated service for uploading docum
 knowledge base and asking questions against them, plus a full identity and access-control
 console.
 
-Pairs with the [`nexarag-app`](https://github.com/SHAKTHI-HACKER/nexarag-app) React SPA.
+Pairs with the [`Nexarag-app`](https://github.com/SHAKTHI-HACKER/Nexarag-app) React SPA.
 
 ---
 

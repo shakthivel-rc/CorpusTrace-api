@@ -2,7 +2,7 @@
 #
 # `make` on its own prints this list. The one you want on a fresh clone is `make setup`.
 
-APP_DIR := ../nexarag-app
+APP_DIR := ../Nexarag-app
 COMPOSE := docker compose
 
 .DEFAULT_GOAL := help

@@ -4,8 +4,8 @@
 # and makes sure the SPA repo is present. Running `docker compose up` directly works too,
 # once those two things are true.
 #
-# NOTE ON THE SPA BUILD CONTEXT. nexarag-app is a separate repository, so this file builds
-# it from a sibling directory (`../nexarag-app`). That is unusual, and it is a consequence
+# NOTE ON THE SPA BUILD CONTEXT. Nexarag-app is a separate repository, so this file builds
+# it from a sibling directory (`../Nexarag-app`). That is unusual, and it is a consequence
 # of the project living in two repos with no parent: something has to own the compose file,
 # and the API is the half that owns the database and the migrations. The bootstrap script
 # clones the sibling if it is missing. If you would rather not build the SPA at all, run
@@ -77,7 +77,7 @@ services:
 
   app:
     build:
-      context: ../nexarag-app
+      context: ../Nexarag-app
     restart: unless-stopped
     depends_on:
       api:

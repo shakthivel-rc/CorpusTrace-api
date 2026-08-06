@@ -15,8 +15,8 @@
 set -euo pipefail
 
 API_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_DIR="$(cd "$API_DIR/.." && pwd)/nexarag-app"
-APP_REPO="${NEXARAG_APP_REPO:-https://github.com/SHAKTHI-HACKER/nexarag-app.git}"
+APP_DIR="$(cd "$API_DIR/.." && pwd)/Nexarag-app"
+APP_REPO="${NEXARAG_APP_REPO:-https://github.com/SHAKTHI-HACKER/Nexarag-app.git}"
 ENV_FILE="$API_DIR/.env"
 
 MODE="docker"
@@ -108,7 +108,7 @@ bold "NexaRAG bootstrap (${MODE})"
 if [[ ! -d "$APP_DIR" ]]; then
     need git
     bold "1. Fetching the SPA"
-    info "nexarag-app is a separate repository; cloning it beside this one"
+    info "Nexarag-app is a separate repository; cloning it beside this one"
     git clone --depth 1 "$APP_REPO" "$APP_DIR" \
         || die "could not clone $APP_REPO — clone it manually to $APP_DIR and re-run."
 else
