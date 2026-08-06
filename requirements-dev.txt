@@ -1,0 +1,12 @@
+# Development / test dependencies for nexarag-api.
+# Installed ON TOP of requirements.txt — never merged into it (keeps the runtime
+# dependency set minimal and auditable). Usage:
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# Chosen to match the pinned runtime stack (FastAPI 0.115 / Starlette 0.46 / pydantic 2.10).
+
+pytest==8.3.4
+pytest-asyncio==0.25.3      # async def route handlers + the model-catalog refresh loop
+pytest-cov==6.0.0           # coverage (term + xml + html)
+httpx==0.28.1               # required by fastapi.testclient.TestClient on Starlette 0.46
+freezegun==1.5.1            # freeze time for lockout-window and JWT-expiry assertions

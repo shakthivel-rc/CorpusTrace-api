@@ -1,0 +1,90 @@
+# The whole stack: MySQL, the API, and the SPA behind nginx.
+#
+# `scripts/bootstrap.sh` is the intended entry point — it writes the .env this file reads
+# and makes sure the SPA repo is present. Running `docker compose up` directly works too,
+# once those two things are true.
+#
+# NOTE ON THE SPA BUILD CONTEXT. nexarag-app is a separate repository, so this file builds
+# it from a sibling directory (`../nexarag-app`). That is unusual, and it is a consequence
+# of the project living in two repos with no parent: something has to own the compose file,
+# and the API is the half that owns the database and the migrations. The bootstrap script
+# clones the sibling if it is missing. If you would rather not build the SPA at all, run
+# `docker compose up db api` and use `npm run dev` for the frontend.
+
+name: nexarag
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-nexarag}
+      MYSQL_USER: ${MYSQL_USER:-nexarag}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+    # utf8mb4 all the way down: document text and user names are not ASCII, and MySQL's
+    # older default silently mangles anything outside the BMP — including most emoji.
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db-data:/var/lib/mysql
+    ports:
+      # Exposed so you can point a client at it. Loopback-only on purpose — binding
+      # 0.0.0.0 would publish the database to the local network.
+      - "127.0.0.1:${MYSQL_PORT:-3307}:3306"
+    healthcheck:
+      # --silent so the credentials never reach the log. `api` waits on this, which is what
+      # stops it racing the ~20s MySQL takes to initialise a fresh data directory.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  api:
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # PyMySQL rather than mysqlclient for the URL: both are installed, and the pure-Python
+      # driver removes one moving part from the container's startup path.
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-nexarag}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-nexarag}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env — bootstrap.sh generates one}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # The SPA is served same-origin through nginx, so the browser never issues a
+      # cross-origin request in this setup. Listed anyway for anyone running `npm run dev`
+      # against these containers.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      RAG_UPLOAD_DIR: /app/uploads/rag
+      # Optional. Present so the entrypoint can seed on a first run.
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+      # Set this if you ever intend to rotate SECRET_KEY: it doubles as the fallback
+      # encryption key for stored LLM credentials, so rotating it without this makes every
+      # saved provider key undecryptable. See CLAUDE.md §13.
+      LLM_CREDENTIAL_ENCRYPTION_KEY: ${LLM_CREDENTIAL_ENCRYPTION_KEY:-}
+    volumes:
+      # Uploaded documents outlive the container. Without this, every rebuild silently
+      # empties every knowledge base while the database still lists them.
+      - uploads:/app/uploads
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+
+  app:
+    build:
+      context: ../nexarag-app
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:80"
+
+volumes:
+  db-data:
+  uploads:

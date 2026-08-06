@@ -1,0 +1,35 @@
+# Test + coverage configuration for nexarag-api.
+# NOTE: intentionally has NO [build-system] table — this file is config only, it does
+# not turn nexarag-api into an installable package.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: pure/unit tests that need no database",
+    "integration: tests that require a database (SQLite locally, MySQL in CI)",
+]
+addopts = "-ra"
+filterwarnings = [
+    # passlib probes bcrypt.__about__ which bcrypt 4.1+ removed — noisy but harmless.
+    "ignore:.*error reading bcrypt version.*:UserWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["."]
+omit = [
+    "tests/*",
+    "alembic/*",
+    "seeders/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+# Ratchet floor. The tested surface (password policy, permission resolution, config,
+# token crypto, RAG chunking/scoring/graph, health + auth middleware, login/lockout)
+# is ~100% covered; large deliberately-untested subsystems (the RAG engine internals,
+# the LLM provider layer, SMTP) drag the global number down. Raise this, never lower it.
+fail_under = 40

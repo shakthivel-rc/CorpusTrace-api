@@ -1,0 +1,77 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.env
+.venv/
+env-test/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# FastAPI specific
+instance/
+db.sqlite3
+*.log
+*.pid
+*.seed
+*.env
+# Every .env sibling, not just the bare name. `.env` and `*.env` between them miss
+# `.env.bak.<timestamp>`, `.env.local`, `.env.prod` — files that hold the same
+# SECRET_KEY and SMTP_PASSWORD as the original and were one `git add -A` from being
+# published. Ship .env.example and nothing else.
+.env.*
+!.env.example
+*.local
+
+# Testing
+.coverage
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
+reports/
+
+# MyPy Type Checking
+.mypy_cache/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Git files
+*.swp
+*.swo
+.DS_Store
+*.bak
+
+# Docker
+# A local-only override, by convention. Everything else Docker-related — the Dockerfile,
+# docker-compose.yml and .dockerignore — is committed on purpose: they are how someone
+# runs this from a clone.
+docker-compose.override.yml
+
+# .dockerignore was ignored here. That is actively dangerous, not merely untidy: without it
+# in a fresh clone, `COPY . .` bakes the developer's .env — real SECRET_KEY, real database
+# credentials — into the image, and `docker history` will show it to anyone who pulls.
+
+
+
+#testing purpose
+myenv/
+chroma_db/
+uploads/
+chroma_db/chroma.sqlite3
+chroma_db/chroma.sqlite3
+
+# Resource Files
+resource_db/
