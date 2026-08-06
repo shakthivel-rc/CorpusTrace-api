@@ -77,7 +77,18 @@ class UserProfileResponse(BaseModel):
     username: str
     first_name: str
     last_name: str
-    email: EmailStr
+    # str, not EmailStr — deliberately, and this is the one response model that had it.
+    #
+    # EmailStr here re-validates an address that is already stored, so a row the database
+    # accepted becomes an uncaught ValidationError on the way *out* — and with no global
+    # exception handler that is a bare HTTP 500. The seeded superadmin tripped exactly this:
+    # email-validator rejects the special-use TLDs .local, .localhost, .test and .invalid
+    # (RFC 6761/6762), so superadmin@nexarag.local could sign in — login takes a plain str —
+    # and then got a 500 from GET /users/profile every time.
+    #
+    # Validation belongs on the way in, where a bad address can still be refused with a 422
+    # the caller can act on. Every request schema above keeps EmailStr for that reason.
+    email: str
     organization: str
     department: str
     created_at: datetime
