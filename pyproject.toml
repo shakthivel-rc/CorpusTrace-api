@@ -8,6 +8,7 @@ asyncio_mode = "auto"
 markers = [
     "unit: pure/unit tests that need no database",
     "integration: tests that require a database (SQLite locally, MySQL in CI)",
+    "live: tests that talk over HTTP to a running stack; skipped unless NEXARAG_LIVE_URL is set",
 ]
 addopts = "-ra"
 filterwarnings = [
