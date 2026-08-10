@@ -1,7 +1,8 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, WebSocket
+from controllers.chat_ws_controller import chat_socket
 from controllers.chat_controller import (
     cancel_ingestion_job,
     delete_brain,
@@ -102,6 +103,24 @@ def ask_question(
     db: Session = Depends(get_db),
 ):
     return fetch_chatbot_reply(query, chat_history_name, brain_id, rag_type, request, db, llm_provider, llm_model)
+
+
+@router.websocket("/ws")
+async def chat_websocket(websocket: WebSocket):
+    """The chat transport the SPA prefers; `POST /chat/asks` remains its fallback.
+
+    No `Depends(check_permissions(["ai_access"]))` and no `Depends(get_db)`, and neither is
+    an oversight. A route dependency resolves against an HTTP request, `JWTAuthMiddleware`
+    is a `BaseHTTPMiddleware` that never sees a websocket scope, and a browser cannot put
+    an `Authorization` header on a WebSocket handshake — so `request.state.user` is never
+    populated here. Authentication and the `ai_access` check both happen inside
+    `chat_socket`, against the token in the connection's first frame, using the same
+    functions the HTTP path uses.
+
+    `async def` is required (WebSocket endpoints have no threadpool dispatch), which is
+    exactly why every blocking step inside runs under `asyncio.to_thread`.
+    """
+    await chat_socket(websocket)
 
 
 # Minimal resources router to keep /resources/brain path for the frontend

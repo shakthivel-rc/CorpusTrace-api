@@ -56,6 +56,7 @@ TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=Fals
 db_session.engine = engine
 db_session.SessionLocal = TestingSessionLocal
 import controllers.chat_controller as _chat_controller  # noqa: E402
+import controllers.chat_ws_controller as _chat_ws_controller  # noqa: E402
 import routes.auth_middleware as _auth_mw  # noqa: E402
 
 _auth_mw.SessionLocal = TestingSessionLocal
@@ -63,6 +64,10 @@ app_main.SessionLocal = TestingSessionLocal
 # The streaming chat body outlives the request-scoped `db` dependency, so it persists the
 # turn on its own session — which must also be the test session.
 _chat_controller.SessionLocal = TestingSessionLocal
+# The chat WebSocket has no request-scoped session at all: every blocking step opens its
+# own. All of them must be the test session too, or auth succeeds against an empty
+# database and every socket closes 4401.
+_chat_ws_controller.SessionLocal = TestingSessionLocal
 
 db_session.Base.metadata.create_all(bind=engine)
 

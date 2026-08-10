@@ -27,6 +27,13 @@ typing_extensions==4.12.2
 uvicorn==0.34.0
 uvloop==0.21.0
 watchfiles==1.0.4
+# The WebSocket protocol implementation uvicorn dispatches `/chat/ws` through. uvicorn
+# declares no WebSocket dependency of its own (this is not `uvicorn[standard]`), and
+# without one installed it answers every upgrade request with a bare HTTP 400 — the chat
+# socket would simply never connect, while every other endpoint kept working. Starlette's
+# TestClient drives websockets in-process and needs none of this, so the test suite cannot
+# catch its absence: only a real server can.
+websockets==16.0
 annotated-types==0.7.0
 anyio==4.8.0
 idna==3.10

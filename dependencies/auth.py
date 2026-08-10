@@ -7,6 +7,18 @@ from db.session import get_db
 from schemas.response import ErrorResponse
 from core.permissions import permission_is_satisfied
 
+def permission_slugs(user: User) -> set[str]:
+    """Every permission slug this user's roles grant.
+
+    Extracted so the chat WebSocket enforces `ai_access` with the same walk this
+    dependency does. A WS connection cannot go through FastAPI's dependency system — there
+    is no `Request`, and `JWTAuthMiddleware` never sees a websocket scope — so the only
+    alternative was a second copy of the role→permission traversal, which is exactly the
+    kind of authorization logic that must never exist twice.
+    """
+    return {permission.machine_name for role in user.roles for permission in role.permissions}
+
+
 def check_permissions(required_permissions: list[str]):
     def role_checker(request: Request, db: Session = Depends(get_db)):
         user = getattr(request.state, "user", None)
@@ -27,11 +39,7 @@ def check_permissions(required_permissions: list[str]):
                     data={},
                 ).model_dump(),
             )
-        table_user_permissions = []
-        for role in user.roles:
-            for permission in role.permissions:
-                table_user_permissions.append(permission.machine_name)
-        user_permissions = set(table_user_permissions)
+        user_permissions = permission_slugs(user)
         if all(permission_is_satisfied(user_permissions, permission) for permission in required_permissions):
             return user
         

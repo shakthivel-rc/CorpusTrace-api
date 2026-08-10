@@ -853,7 +853,7 @@ def serialize_chunk(chunk: DocumentChunk) -> dict:
 
 
 @dataclass
-class _AnswerPlan:
+class AnswerPlan:
     """The result of retrieval: an answer that is always valid on its own, plus
     everything needed to improve it with LLM synthesis.
 
@@ -870,9 +870,9 @@ class _AnswerPlan:
     synthesize: bool
 
 
-def _terminal_plan(mode: str, answer: str, resource_name: str) -> _AnswerPlan:
+def _terminal_plan(mode: str, answer: str, resource_name: str) -> AnswerPlan:
     """A plan that is already final — no retrieval evidence to synthesize from."""
-    return _AnswerPlan(
+    return AnswerPlan(
         mode=mode,
         answer=answer,
         citations=[],
@@ -929,7 +929,7 @@ def _plan_answer(
     rag_mode: str | None,
     llm_provider: str | None,
     llm_model: str | None,
-) -> _AnswerPlan:
+) -> AnswerPlan:
     resource = get_user_resource(db, user_id, resource_id)
     if not resource:
         raise ValueError("Resource not found or not accessible")
@@ -1045,7 +1045,7 @@ def _plan_answer(
         )
 
     synthesize = bool(llm_provider and llm_model and results)
-    return _AnswerPlan(
+    return AnswerPlan(
         mode=mode,
         answer=answer,
         citations=_citations(results),
@@ -1116,6 +1116,56 @@ def _synthesis_failed_answer(extractive_answer: str, provider: str, model: str, 
     )
 
 
+def plan_answer(
+    db: Session,
+    user_id: str,
+    resource_id: str,
+    query: str,
+    rag_mode: str | None,
+    llm_provider: str | None = None,
+    llm_model: str | None = None,
+) -> AnswerPlan:
+    """Run retrieval and stop, before any provider call.
+
+    `answer_question` does both halves in one go, which is all an HTTP handler needs. The
+    chat WebSocket needs them apart: citations are fully resolved here, and a socket can
+    deliver them the moment they exist rather than holding them until the LLM has finished
+    writing. Raises exactly what `answer_question` raises — `ValueError` for a resource the
+    caller cannot see, `LlmProviderError` for a provider sent without a model.
+    """
+    return _plan_answer(db, user_id, resource_id, query, rag_mode, llm_provider, llm_model)
+
+
+def complete_answer(
+    db: Session,
+    user_id: str,
+    plan: AnswerPlan,
+    query: str,
+    llm_provider: str | None = None,
+    llm_model: str | None = None,
+) -> str:
+    """The synthesis half: the finished answer text for an already-planned question.
+
+    Never raises on a provider failure — the extractive answer retrieval already produced
+    is returned with a note saying why the model did not write one. Losing an answer the
+    system had in hand to a rate limit is the failure mode this guards.
+    """
+    if not plan.synthesize:
+        return plan.answer
+    try:
+        llm_answer = generate_grounded_answer(
+            db, user_id, llm_provider, llm_model, query, plan.evidence, plan.mode, plan.resource_name
+        )
+        # Verbatim model output, nothing appended. Provenance (source, chunk, modality,
+        # score, page range) travels as structured data on `plan.citations` — the
+        # X-Nexarag-Citations header, the WebSocket `citations` frame and citations_json —
+        # and the client renders it as a panel. Re-printing the same fields as prose here
+        # made the answer body its own duplicate footer, unstyled and unparseable.
+        return llm_answer.strip()
+    except LlmProviderError as exc:
+        return _synthesis_failed_answer(plan.answer, llm_provider, llm_model, exc)
+
+
 def answer_question(
     db: Session,
     user_id: str,
@@ -1125,21 +1175,8 @@ def answer_question(
     llm_provider: str | None = None,
     llm_model: str | None = None,
 ) -> RagAnswer:
-    plan = _plan_answer(db, user_id, resource_id, query, rag_mode, llm_provider, llm_model)
-    answer = plan.answer
-    if plan.synthesize:
-        try:
-            llm_answer = generate_grounded_answer(
-                db, user_id, llm_provider, llm_model, query, plan.evidence, plan.mode, plan.resource_name
-            )
-            # Verbatim model output, nothing appended. Provenance (source, chunk, modality,
-            # score, page range) travels as structured data on `plan.citations` — the
-            # X-Nexarag-Citations header and citations_json — and the client renders it as a
-            # panel. Re-printing the same fields as prose here made the answer body its own
-            # duplicate footer, unstyled and unparseable.
-            answer = llm_answer.strip()
-        except LlmProviderError as exc:
-            answer = _synthesis_failed_answer(plan.answer, llm_provider, llm_model, exc)
+    plan = plan_answer(db, user_id, resource_id, query, rag_mode, llm_provider, llm_model)
+    answer = complete_answer(db, user_id, plan, query, llm_provider, llm_model)
     return RagAnswer(answer=answer, citations=plan.citations, mode=plan.mode)
 
 

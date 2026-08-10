@@ -199,7 +199,7 @@ def fetch_chatbot_reply(query, chat_history_name, brain_id, rag_type, request, d
             # collected and GeneratorExit unwinds to here — promptly under CPython
             # refcounting, but on the collecting thread and not at a guaranteed moment.
             # Recording a partial answer late still beats losing a turn the user saw.
-            _persist_chat_turn(
+            persist_chat_turn(
                 user_id=user_id,
                 session_name=session_name,
                 query=query,
@@ -219,7 +219,7 @@ def fetch_chatbot_reply(query, chat_history_name, brain_id, rag_type, request, d
     return StreamingResponse(stream_body(), media_type="text/event-stream", headers=headers)
 
 
-def _persist_chat_turn(
+def persist_chat_turn(
     user_id: str,
     session_name: str,
     query: str,
@@ -236,6 +236,10 @@ def _persist_chat_turn(
     is consumed, so this cannot reuse it. Nothing here may raise: the user has already
     received the answer, and failing to record it must not break the response that is
     still being written.
+
+    Public because the chat WebSocket records its turns through this same function. A
+    socket has no request-scoped session at all, so it needs exactly the properties this
+    already has — its own `SessionLocal()`, and no exception that can escape.
     """
     if not answer.strip():
         return
