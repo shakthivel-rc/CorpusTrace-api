@@ -451,10 +451,15 @@ RAG_MODE_RECOMMENDATIONS: dict[str, dict] = {
         "strategy": STRATEGY_SENTENCE,
         "chunk_size": 600,
         "overlap": 180,
+        # Justified by what retrieval reads, not by what ingestion writes. This string used
+        # to cite entity CO-OCCURRENCE, which is computed into `rag_graph_edges` — a table
+        # no query-time code has ever read. Recommending a chunk size on the strength of a
+        # mechanism that never runs is advice a user cannot act on.
         "why": (
-            "Builds its entity graph from terms that co-occur inside the same chunk. Smaller "
-            "chunks mean two entities appearing together is more likely to be a real "
-            "relationship than an accident of page layout."
+            "Boosts passages whose extracted entity names share a word with your question, "
+            "and each entity points back at the chunks it was found in. Smaller chunks make "
+            "that pointer more precise, so the boost lands on the passage that actually "
+            "discusses the entity rather than on everything around it."
         ),
     },
     "corrective": {

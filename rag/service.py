@@ -2192,10 +2192,39 @@ def _query_variants(query: str) -> list[str]:
     return list(dict.fromkeys(variants))
 
 
+# How far the entity graph is allowed to move a lexical ranking.
+#
+# The boost used to be an absolute `1.5 + min(weight, 5) * 0.1`, summed once per matched
+# entity with no ceiling — which put it on the same numeric scale as an entire lexical
+# score while being unbounded. Measured on a 783-chunk motorcycle manual, one question
+# matched 38 of 1,207 entities and the accumulated boost came to 18.9x the whole spread
+# between the best and eighth-best lexical candidate. The result was not a refinement of
+# the ranking but a replacement of it: four of the five citations arrived on boost alone,
+# and the passage that actually answered the question was pushed out of the list entirely.
+# A signal that can always override the thing it is meant to refine is not a signal.
+#
+# Two properties fix that, and both are load-bearing:
+#
+#   * The boost is a FRACTION of the strongest lexical score this query produced, never an
+#     absolute number. Scores are corpus- and query-dependent (`_score_chunk` sums term
+#     frequencies), so any constant is right for one document and wrong for the next.
+#     Because the cap is below 1.0, a chunk carrying no lexical score at all — the "graph
+#     entity expansion" case — can be surfaced into the shortlist but can never outrank the
+#     best lexical passage. That single inequality is the whole point of the change.
+#
+#   * Affinity SATURATES instead of accumulating. Matching 38 entities is not 38 times the
+#     evidence of matching one: on a document about the Daytona, "daytona" alone appears in
+#     18 entity names, so a raw sum mostly measures how often the document says its own
+#     subject. `w / (w + SATURATION)` keeps the ordering (more entities still ranks higher)
+#     while flattening the tail.
+GRAPH_BOOST_MAX_FRACTION = 0.35
+GRAPH_BOOST_SATURATION = 3.0
+
+
 def _graph_rag(db: Session, resource_id: str, query: str, chunks: list[DocumentChunk]) -> tuple[list[RetrievalResult], str]:
     query_terms = set(_tokenize(query))
     entities = db.query(RagGraphEntity).filter(RagGraphEntity.resource_id == resource_id).all()
-    chunk_boosts: dict[str, float] = defaultdict(float)
+    affinity: dict[str, float] = defaultdict(float)
     matched_entities = []
 
     for entity in entities:
@@ -2207,17 +2236,34 @@ def _graph_rag(db: Session, resource_id: str, query: str, chunks: list[DocumentC
             except json.JSONDecodeError:
                 chunk_refs = []
             for chunk_id in chunk_refs:
-                chunk_boosts[chunk_id] += 1.5 + min(entity.weight, 5) * 0.1
+                # Deliberately unitless. It becomes a score below, against the lexical
+                # scale this particular query produced — accumulating points here is what
+                # made the old boost mean something different on every document.
+                affinity[chunk_id] += 1.0 + min(entity.weight, 5) * 0.1
 
     base_results = _contextual_hybrid(query, chunks, limit=8)
+    top_lexical = base_results[0].score if base_results else 0.0
+    # No lexical match anywhere means there is no scale to be a fraction of, and any
+    # positive score ranks the same as any other. In practice this branch is unreachable —
+    # entity names are extracted from chunk text, so an entity token matching the query
+    # implies the chunk holding it also scored — but a retrieval path must not depend on
+    # that being true for every future extractor.
+    ceiling = top_lexical * GRAPH_BOOST_MAX_FRACTION if top_lexical > 0 else GRAPH_BOOST_MAX_FRACTION
+
+    def graph_boost(chunk_id: str) -> float:
+        weight = affinity.get(chunk_id, 0.0)
+        if weight <= 0:
+            return 0.0
+        return ceiling * weight / (weight + GRAPH_BOOST_SATURATION)
+
     chunks_by_id = {chunk.id: chunk for chunk in chunks}
     scores: dict[str, RetrievalResult] = {
-        result.chunk.id: RetrievalResult(result.chunk, result.score + chunk_boosts.get(result.chunk.id, 0), result.reason)
+        result.chunk.id: RetrievalResult(result.chunk, result.score + graph_boost(result.chunk.id), result.reason)
         for result in base_results
     }
-    for chunk_id, boost in chunk_boosts.items():
+    for chunk_id in affinity:
         if chunk_id in chunks_by_id and chunk_id not in scores:
-            scores[chunk_id] = RetrievalResult(chunks_by_id[chunk_id], boost, "graph entity expansion")
+            scores[chunk_id] = RetrievalResult(chunks_by_id[chunk_id], graph_boost(chunk_id), "graph entity expansion")
 
     graph_notes = ""
     if matched_entities:
