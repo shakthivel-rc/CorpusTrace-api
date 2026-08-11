@@ -454,28 +454,25 @@ def test_unknown_user_id_is_a_404_not_a_500(admin, unique):
     assert_envelope(admin.get(f"/users/missing-{unique}"), 404)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG: POST /users always raises. create_new_user() returns a dict (vars(new_user)) "
-        "but add_user_controller then reads new_user.id when writing the activity log -> "
-        "AttributeError: 'dict' object has no attribute 'id'. The route requires "
-        "manage_users, so `request.state.user` is always populated and the log branch is "
-        "always taken: there is no input that reaches the 201. With no global exception "
-        "handler the caller gets a bare text/plain 500 with no envelope at all."
-    ),
-)
 def test_admin_console_can_create_a_user(admin, unique):
     """Creating a user from the admin console must work end to end.
 
     This is the console's primary write path — the only supported way to onboard someone
-    into a named role without them self-registering — and it is the one endpoint here that
-    cannot succeed at all. The assertions are deliberately the full round trip rather than
-    just the status code, because a fix that returns 201 without persisting the row would
-    be just as broken from the operator's side.
+    into a named role without them self-registering. It used to be the one endpoint here
+    that could not succeed at all: `create_new_user` returns a dict (`vars(new_user)`) and
+    `add_user_controller` read `new_user.id` when writing the activity log, raising
+    `AttributeError: 'dict' object has no attribute 'id'` on every call — the route requires
+    `manage_users`, so `request.state.user` is always populated and the log branch is always
+    taken. With no global exception handler the console got a bare text/plain 500 with no
+    envelope to read. Fixed 2026-08-11; covered without a live stack by
+    `tests/integration/test_user_creation.py`, since only the live suite drove this route
+    with a real session row and the live suite is skipped by default.
 
-    Cleanup runs regardless, so that when this is fixed and starts passing, it does not
-    leave a user behind for the next run.
+    The assertions are deliberately the full round trip rather than just the status code,
+    because a fix that returns 201 without persisting the row would be just as broken from
+    the operator's side.
+
+    Cleanup runs regardless, so a passing run does not leave a user behind for the next one.
     """
     roles = assert_envelope(admin.get("/roles"))
     by_name = {r["name"]: r["id"] for r in roles["records"]}
