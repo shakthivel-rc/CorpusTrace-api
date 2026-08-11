@@ -22,6 +22,32 @@ from schemas.user import ChangePasswordSchema
 from utils.password import hash_password, validate_password_policy
 import bcrypt
 
+"""Columns that must never leave the server.
+
+`create_new_user` builds its dict with `vars(new_user)`, so it carries *every* mapped
+column — including `verify_token`, which is the account-activation secret the invite email
+delivers, and the `password` hash. Whitelisting rather than blacklisting: a column added to
+the model later is absent from the response by default instead of being published by it.
+"""
+PUBLIC_USER_FIELDS = (
+    "id",
+    "username",
+    "email",
+    "first_name",
+    "last_name",
+    "organization",
+    "department",
+    "status",
+    "created_at",
+    "updated_at",
+)
+
+
+def public_user(user: Dict[str, Any]) -> Dict[str, Any]:
+    """The safe subset of a created user, for the response body."""
+    return {field: user[field] for field in PUBLIC_USER_FIELDS if field in user}
+
+
 def get_user_profile(request: Request, db: Session):
     user = getattr(request.state, "user", None)
     
@@ -74,11 +100,17 @@ def add_user_controller(response: Response, user: UserSignupReqeust, db: Session
             actor_id = current_user.get("sub")
             actor = db.query(User).filter(User.id == actor_id).first()
             actor_name = f"{actor.first_name} {actor.last_name}" if actor else ""
-            log_activity(db, actor_id, actor_name, "CREATE", entity_type="user", entity_id=new_user.id, details=f"Created user {user.first_name} {user.last_name}", ip_address=ip_address)
+            # `create_new_user` returns a dict, not a model — `add_roles_to_user` already
+            # subscripts it the same way. Reading `.id` here raised AttributeError on every
+            # single call: the route requires `manage_users`, so `request.state.user` is
+            # always populated and this branch is always taken. There was no input that
+            # reached the 201, and with no global exception handler the console got a bare
+            # text/plain 500 with no envelope to read.
+            log_activity(db, actor_id, actor_name, "CREATE", entity_type="user", entity_id=new_user["id"], details=f"Created user {user.first_name} {user.last_name}", ip_address=ip_address)
 
     db.commit()
     response.status_code = status.HTTP_201_CREATED
-    return SuccessResponse(status="success", status_code=201, message="User added successfully", data=new_user)
+    return SuccessResponse(status="success", status_code=201, message="User added successfully", data=public_user(new_user))
 
 def update_user_controller(user_id: str, update_data: UserUpdateRequest, db: Session, request: Request = None):
     try:
