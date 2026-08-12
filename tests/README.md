@@ -77,10 +77,18 @@ The tested surface — the pure business logic plus the auth/health request path
   manually.
 - **SMTP / email** (`integrations/aws_ses.py`): no fake SMTP server wired up yet.
 - **The migration round-trip on SQLite**: the Alembic revisions contain MySQL-specific
-  operations, so `test_migrations.py` is **skipped on SQLite** and runs in CI against the
-  MySQL service.
+  operations, so `test_migrations.py` is **skipped on SQLite**. It used to run in CI against
+  a MySQL service container; with CI removed (CLAUDE.md §25) it runs **nowhere** unless you
+  point `TEST_DATABASE_URL` at a real MySQL yourself:
+
+  ```bash
+  TEST_DATABASE_URL=mysql+pymysql://root:root@127.0.0.1:3306/nexarag_test pytest
+  ```
+
+  This is the one gap that matters, because SQLite also ignores `VARCHAR` limits — the
+  overflow MySQL raises as error 1406 passes here silently.
 
 ## Reports
 
-`pytest --cov` writes `coverage.xml`, `htmlcov/` and `reports/pytest-junit.xml`. CI
-([`../.github/workflows/ci.yml`](../.github/workflows/ci.yml)) uploads them as artifacts.
+`pytest --cov` writes `coverage.xml`, `htmlcov/` and `reports/pytest-junit.xml`. Nothing
+collects them automatically any more; read them locally.
