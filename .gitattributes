@@ -1,0 +1,28 @@
+# Line endings.
+#
+# Windows installs of Git default to core.autocrlf=true, which rewrites LF to CRLF on
+# checkout. For most files that is invisible and fine. For these it is not:
+#
+#   * scripts/docker-entrypoint.sh is COPYied into a Linux image and run by /bin/sh. With
+#     CRLF, the shebang line reads `#!/usr/bin/env sh\r` and the kernel looks for an
+#     interpreter literally named "sh\r" — so the container exits immediately with
+#     `/usr/bin/env: 'sh\r': No such file or directory`, which names no file in this
+#     repository and appears only on Windows. The image builds cleanly; it just cannot run.
+#   * The same applies to every script under scripts/, which Git Bash executes directly.
+#   * Dockerfile RUN lines with trailing \r break the shell inside the build.
+#
+# `eol=lf` overrides autocrlf per path, so a Windows clone gets exactly the bytes Linux
+# gets for these files and CRLF stays available everywhere else.
+* text=auto eol=lf
+
+*.sh          text eol=lf
+Dockerfile    text eol=lf
+Makefile      text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+
+# Real binaries: never touched.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.ico binary

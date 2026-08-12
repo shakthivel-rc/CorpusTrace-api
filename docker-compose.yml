@@ -11,11 +11,19 @@
 # clones the sibling if it is missing. If you would rather not build the SPA at all, run
 # `docker compose up db api` and use `npm run dev` for the frontend.
 
-name: nexarag
+# The project name is what every container, network and volume is prefixed with, so it is
+# also what decides *which* database a stack talks to. Interpolated rather than fixed
+# because bootstrap.sh needs one escape hatch: a db-data volume whose password this
+# checkout no longer knows cannot be recovered, and building a second stack beside it is
+# the only repair that does not delete somebody's data. See scripts/lib/run_docker.sh.
+name: ${COMPOSE_PROJECT_NAME:-nexarag}
 
 services:
   db:
-    image: mysql:8.0
+    # Overridable only so setup can react to a tag with no image for the local
+    # architecture. MySQL 8.0 publishes amd64 and arm64, so this is a backstop, not a knob:
+    # point it at something that is not MySQL and the migrations are on their own.
+    image: ${MYSQL_IMAGE:-mysql:8.0}
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-nexarag}

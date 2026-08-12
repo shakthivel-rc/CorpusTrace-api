@@ -6,20 +6,30 @@ APP_DIR := ../Nexarag-app
 COMPOSE := docker compose
 
 .DEFAULT_GOAL := help
-.PHONY: help setup setup-native up down restart logs ps shell db-shell migrate revision seed \
-        dev test test-api test-app verify build clean reset
+.PHONY: help setup setup-native setup-docker doctor up down restart logs ps shell db-shell \
+        migrate revision seed dev test test-api test-app verify build clean reset
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 # --- getting started --------------------------------------------------------------------
+#
+# On Windows there is no make: run `setup.cmd`, or `powershell -ExecutionPolicy Bypass
+# -File scripts\bootstrap.ps1`. It installs what Windows is missing and then runs the same
+# bootstrap.sh under Git Bash, so there is one implementation of the setup logic.
 
-setup: ## Clone the SPA, write .env, build and start everything (Docker)
+setup: ## Clone the SPA, write .env, and start everything (Docker, falling back to native)
 	@./scripts/bootstrap.sh
 
-setup-native: ## Same, without Docker — needs your own MySQL, Python 3.12 and Node
+setup-docker: ## Setup, refusing to fall back to a native install
+	@./scripts/bootstrap.sh --docker
+
+setup-native: ## Setup without Docker — venv + npm + MySQL, installing what is missing
 	@./scripts/bootstrap.sh --native
+
+doctor: ## Report what setup would do and what is missing, changing nothing
+	@./scripts/bootstrap.sh --check
 
 # --- Docker -----------------------------------------------------------------------------
 
@@ -58,12 +68,8 @@ seed: ## Seed the superadmin and default roles
 
 # --- development (native) ---------------------------------------------------------------
 
-dev: ## Run both dev servers with hot reload (Ctrl-C stops both)
-	@echo "API → http://localhost:8000   SPA → http://localhost:3000"
-	@trap 'kill 0' INT TERM EXIT; \
-	( . .venv/bin/activate && uvicorn main:app --reload --host 0.0.0.0 --port 8000 ) & \
-	( cd $(APP_DIR) && npm run dev ) & \
-	wait
+dev: ## Run both dev servers with hot reload, on the ports in .env (Ctrl-C stops both)
+	@./scripts/dev.sh
 
 # --- tests ------------------------------------------------------------------------------
 
