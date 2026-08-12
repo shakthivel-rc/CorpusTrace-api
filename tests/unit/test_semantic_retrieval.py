@@ -26,6 +26,7 @@ from itertools import count
 import pytest
 
 import rag.service as rag_service
+from rag import chunking
 from models.file import File
 from models.rag import DocumentChunk
 from models.resource import Resource
@@ -42,7 +43,7 @@ from rag.service import (
     _SemanticRetrieval,
     _tokenize,
 )
-from services.llm_provider import LlmProviderError
+from services.llm_provider import EMBED_TASK_DOCUMENT, EMBED_TASK_QUERY, LlmProviderError
 
 pytestmark = pytest.mark.unit
 
@@ -139,12 +140,25 @@ def _detached_chunk(text: str, vector: list[float] | None = None, model: str | N
     return chunk
 
 
-def _stub_embed(monkeypatch, vectors=None, error: Exception | None = None) -> list[list[str]]:
-    """Replace the one seam and record what it was asked to embed."""
+def _stub_embed(
+    monkeypatch,
+    vectors=None,
+    error: Exception | None = None,
+    tasks: list[str] | None = None,
+) -> list[list[str]]:
+    """Replace the one seam and record what it was asked to embed.
+
+    `task` is accepted rather than ignored because the double has to keep the real
+    signature: a stub that quietly swallows a new argument is how a call site stops being
+    tested without any test going red. Pass `tasks=[]` to capture which side of an
+    asymmetric model each call asked for.
+    """
     calls: list[list[str]] = []
 
-    def fake_embed_texts(db, user_id, provider, model_id, texts):
+    def fake_embed_texts(db, user_id, provider, model_id, texts, task=EMBED_TASK_DOCUMENT):
         calls.append(list(texts))
+        if tasks is not None:
+            tasks.append(task)
         if error is not None:
             raise error
         return [QUERY_VECTOR] * len(texts) if vectors is None else vectors
@@ -432,7 +446,7 @@ class TestSemanticRetrieval:
         ]
         recorded: list[tuple[str, str]] = []
 
-        def fake_embed_texts(db_, user_id, provider, model_id, texts):
+        def fake_embed_texts(db_, user_id, provider, model_id, texts, task=EMBED_TASK_DOCUMENT):
             recorded.append((provider, model_id))
             return [QUERY_VECTOR]
 
@@ -586,3 +600,40 @@ class TestTheSynonymBridge:
         # ...and without the vector, the very same question is refused. This pair is the
         # feature: the difference between the two lines is the whole value of embedding.
         assert _has_sufficient_evidence(self.QUERY, blended) is False
+
+
+class TestTheQuerySideIsAskedFor:
+    """Which side of an asymmetric model each call site requests.
+
+    EmbeddingGemma encodes a question and the passage answering it differently, and the
+    only thing selecting between them is the `task` these two call sites pass. Getting it
+    wrong raises nothing and logs nothing — the question simply lands in the wrong
+    neighbourhood of its own answers, and every search quietly returns less.
+    """
+
+    def test_asking_a_question_embeds_it_as_a_query(self, db, monkeypatch):
+        resource = _resource(db)
+        file_row = _file(db, resource, "manual.txt", provider="ollama", model=MODEL)
+        chunk = _chunk(db, resource, file_row, "motorcycle service", 0, _vector(0.9))
+        tasks: list[str] = []
+        _stub_embed(monkeypatch, tasks=tasks)
+
+        _semantic_retrieval(db, OWNER, resource.id, "bike servicing", [chunk])
+
+        assert tasks == [EMBED_TASK_QUERY]
+
+    def test_indexing_a_document_embeds_it_as_a_document(self, db, monkeypatch):
+        resource = _resource(db)
+        file_row = _file(db, resource, "manual.txt", provider="ollama", model=MODEL)
+        chunk = _chunk(db, resource, file_row, "Brake bleeding procedure", 0, _vector(0.9))
+        tasks: list[str] = []
+        _stub_embed(monkeypatch, vectors=[QUERY_VECTOR], tasks=tasks)
+
+        rag_service._embed_chunks(
+            db,
+            OWNER,
+            chunking.IndexingConfig(embedding_provider="ollama", embedding_model=MODEL),
+            [chunk],
+        )
+
+        assert tasks == [EMBED_TASK_DOCUMENT]

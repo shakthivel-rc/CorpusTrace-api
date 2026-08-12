@@ -26,6 +26,7 @@ import pytest
 
 import rag.jobs as jobs
 import rag.service as rag_service
+from services.llm_provider import EMBED_TASK_DOCUMENT
 from core.config import get_settings
 from models.file import File
 from models.permissions import Permission
@@ -599,8 +600,13 @@ class TestEmbeddingsAreOptIn:
         proving nothing."""
         calls: list[int] = []
 
-        def _fake_embed(db_session, user_id, provider, model_id, texts):
+        # `task` is accepted, not swallowed by **kwargs: a double that quietly absorbs a new
+        # argument is how a call site stops being exercised with nothing going red. Note
+        # this control test caught exactly that — run_job's per-document `except Exception`
+        # turned the TypeError into a failed document, so `calls` stayed empty.
+        def _fake_embed(db_session, user_id, provider, model_id, texts, task=EMBED_TASK_DOCUMENT):
             calls.append(len(texts))
+            assert task == EMBED_TASK_DOCUMENT, "ingestion embeds documents, not queries"
             return [[0.1, 0.2, 0.3] for _ in texts]
 
         monkeypatch.setattr(rag_service, "embed_texts", _fake_embed)

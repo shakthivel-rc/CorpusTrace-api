@@ -56,6 +56,7 @@ class Settings:
     llm_first_token_timeout_seconds: int
     llm_max_retries: int
     llm_retry_backoff_seconds: int
+    ollama_base_url: str
 
     @property
     def is_production(self) -> bool:
@@ -91,6 +92,16 @@ def get_settings() -> Settings:
         llm_first_token_timeout_seconds=_optional_int("LLM_FIRST_TOKEN_TIMEOUT_SECONDS", 60),
         llm_max_retries=_optional_int("LLM_MAX_RETRIES", 2),
         llm_retry_backoff_seconds=_optional_int("LLM_RETRY_BACKOFF_SECONDS", 1),
+        # Where Ollama is, when the user has saved no base URL of their own.
+        #
+        # It needs to be configurable because the right answer differs by how the API is
+        # running, and neither answer works for the other: a native process reaches Ollama
+        # on the host at localhost, while inside a container localhost IS the container, so
+        # the default silently points the embedding call at the API itself. docker-compose
+        # sets this to the service name. Nothing about Ollama is required — an unset value
+        # and no Ollama installed simply means embeddings are not offered through it.
+        ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip()
+        or "http://localhost:11434",
     )
 
     if settings.is_production and "*" in settings.cors_origins:

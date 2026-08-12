@@ -1,0 +1,11 @@
+NexaRAG API
+Copyright 2026 <COPYRIGHT HOLDER>
+
+This product includes software developed by <COPYRIGHT HOLDER>.
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file for the
+full terms.
+
+Third-party dependencies are not redistributed by this repository; they are
+resolved from PyPI at install time. Their licenses are catalogued for
+reference in THIRD-PARTY-NOTICES.md.

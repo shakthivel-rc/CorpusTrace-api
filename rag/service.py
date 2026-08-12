@@ -31,6 +31,8 @@ from models.resource import Resource
 from rag import chunking
 from rag.chunking import IndexingConfig
 from services.llm_provider import (
+    EMBED_TASK_DOCUMENT,
+    EMBED_TASK_QUERY,
     LlmProviderError,
     embed_texts,
     generate_conversational_reply,
@@ -531,6 +533,7 @@ def _embed_chunks(
             vectors = embed_texts(
                 db, user_id, config.embedding_provider, config.embedding_model,
                 [chunk.content for chunk in batch],
+                task=EMBED_TASK_DOCUMENT,
             )
         except LlmProviderError as exc:
             logger.warning(
@@ -2070,7 +2073,11 @@ def _semantic_retrieval(
     provider, model = pair
 
     try:
-        vectors = embed_texts(db, user_id, provider, model, [query])
+        # The query side of an asymmetric model. EmbeddingGemma is trained so a question
+        # and the passage answering it are encoded differently, and the only thing telling
+        # it which is which is the prefix this task selects — embed a question as if it
+        # were a document and it lands in the wrong neighbourhood of its own answers.
+        vectors = embed_texts(db, user_id, provider, model, [query], task=EMBED_TASK_QUERY)
     except LlmProviderError as exc:
         logger.info(
             "semantic retrieval unavailable, continuing lexically",

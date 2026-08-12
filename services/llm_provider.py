@@ -275,7 +275,7 @@ def list_provider_options(db: Session, user_id: str) -> dict:
                 "credential_required": metadata["credential_required"],
                 "configured": bool(credential) if metadata["credential_required"] else True,
                 "api_key_hint": credential.api_key_hint if credential else None,
-                "base_url": credential.base_url if credential else metadata["default_base_url"],
+                "base_url": credential.base_url if credential else default_base_url(provider),
                 "validation_status": credential.validation_status if credential else "not_configured",
                 "validation_error": credential.validation_error if credential else None,
                 "last_validated_at": _iso(credential.last_validated_at) if credential else None,
@@ -301,7 +301,7 @@ def upsert_provider_credential(
     provider = normalize_provider(provider)
     metadata = SUPPORTED_PROVIDERS[provider]
     cleaned_key = (api_key or "").strip()
-    cleaned_base_url = (base_url or metadata["default_base_url"]).strip().rstrip("/")
+    cleaned_base_url = (base_url or default_base_url(provider)).strip().rstrip("/")
 
     if metadata["credential_required"] and not cleaned_key:
         raise LlmProviderError("API key is required for this provider", 400)
@@ -370,7 +370,7 @@ def test_provider_connection(db: Session, user_id: str, provider: str) -> dict:
         raise LlmProviderError("Configure API credentials before testing this provider", 400)
 
     api_key = decrypt_secret(credential.encrypted_api_key) if credential and credential.encrypted_api_key else None
-    base_url = (credential.base_url if credential else SUPPORTED_PROVIDERS[provider]["default_base_url"]).rstrip("/")
+    base_url = (credential.base_url if credential else default_base_url(provider)).rstrip("/")
     try:
         models = fetch_provider_models(provider, api_key, base_url)
         ok = True
@@ -441,7 +441,7 @@ def refresh_provider_models(db: Session, user_id: str, provider: str) -> dict:
         raise LlmProviderError("Configure API credentials before refreshing provider models", 400)
 
     api_key = decrypt_secret(credential.encrypted_api_key) if credential and credential.encrypted_api_key else None
-    base_url = (credential.base_url if credential else SUPPORTED_PROVIDERS[provider]["default_base_url"]).rstrip("/")
+    base_url = (credential.base_url if credential else default_base_url(provider)).rstrip("/")
     fetched_models = fetch_provider_models(provider, api_key, base_url)
     if not fetched_models:
         raise LlmProviderError("Provider returned no models", 502)
@@ -677,6 +677,22 @@ class _ProviderCall:
     params: dict
 
 
+def default_base_url(provider: str) -> str:
+    """The base URL to use for a provider when the user has saved none of their own.
+
+    Everything comes from the static registry except Ollama, whose right answer depends on
+    where this process is running: a native API reaches Ollama on the host at localhost,
+    while inside a container localhost is the container itself — so the registry default
+    would quietly aim the embedding call at the API's own port. Resolved here rather than
+    in the registry literal so SUPPORTED_PROVIDERS stays a plain data table that
+    TestRegistryIntegrity can check, and so the value is read at call time rather than
+    frozen at import.
+    """
+    if provider == "ollama":
+        return get_settings().ollama_base_url
+    return SUPPORTED_PROVIDERS[provider]["default_base_url"]
+
+
 def _resolve_call(db: Session, user_id: str, provider: str) -> _ProviderCall:
     provider = normalize_provider(provider)
     credential = get_active_credential(db, user_id, provider)
@@ -684,7 +700,7 @@ def _resolve_call(db: Session, user_id: str, provider: str) -> _ProviderCall:
         raise LlmProviderError("Selected LLM provider is not configured with an API key", 400)
 
     api_key = decrypt_secret(credential.encrypted_api_key) if credential and credential.encrypted_api_key else None
-    base_url = (credential.base_url if credential else SUPPORTED_PROVIDERS[provider]["default_base_url"]).rstrip("/")
+    base_url = (credential.base_url if credential else default_base_url(provider)).rstrip("/")
     _require_resolved_base_url(base_url)
     return _ProviderCall(
         provider=provider,
@@ -1094,7 +1110,19 @@ SUPPORTED_EMBEDDING_PROVIDERS: dict[str, dict[str, Any]] = {
     "ollama": {
         "api_style": "ollama",
         "models": [
-            {"id": "nomic-embed-text", "label": "nomic-embed-text", "dimensions": 768, "recommended": True,
+            # Google's EmbeddingGemma, served from Ollama's own library rather than Hugging
+            # Face. That distinction is the whole reason it can be listed here: the HF repo
+            # (google/embeddinggemma-300m) is *gated* — it needs an account, an accepted
+            # Gemma licence and a token before a single byte can be downloaded — and none
+            # of that can be automated from inside this app. `ollama pull embeddinggemma`
+            # asks for nothing. Same weights, no gate, no key, no per-token cost, and the
+            # documents never leave the machine.
+            {"id": "embeddinggemma", "label": "embeddinggemma (Google, 300M)", "dimensions": 768,
+             "recommended": True,
+             "notes": "Google's EmbeddingGemma. `ollama pull embeddinggemma` first (622 MB). "
+                      "Built for retrieval and the strongest option here for its size; "
+                      "`embeddinggemma:300m-qat-q4_0` is a 239 MB variant for a small machine."},
+            {"id": "nomic-embed-text", "label": "nomic-embed-text", "dimensions": 768, "recommended": False,
              "notes": "Strong general-purpose local model. `ollama pull nomic-embed-text` first."},
             {"id": "mxbai-embed-large", "label": "mxbai-embed-large", "dimensions": 1024, "recommended": False,
              "notes": "Larger and slower; a modest quality gain on longer passages."},
@@ -1138,6 +1166,70 @@ EMBEDDING_BATCH_SIZE = 32
 # characters, so this is only reachable by a caller passing something other than chunks.
 MAX_EMBEDDING_INPUT_CHARS = 8000
 
+# The two sides of a retrieval embedding. They are not interchangeable for every model.
+EMBED_TASK_DOCUMENT = "document"
+EMBED_TASK_QUERY = "query"
+
+# Models that require an instruction prefix, and what it is.
+#
+# Some embedding models are *asymmetric*: they are trained so that a question and the
+# passage answering it are encoded differently, and they are told which is which by a
+# literal string glued to the front of the input. EmbeddingGemma is one of them. Without
+# the prefix it still returns a 768-dimension vector and every test still passes — it is
+# simply a worse vector, and the only symptom is retrieval that quietly finds less. That is
+# the failure mode this table exists to prevent: not a crash, a silent quality loss.
+#
+# Keyed by MODEL, not by provider, because the requirement belongs to the weights. The same
+# EmbeddingGemma needs the same prefix whether it arrives through Ollama, a local server or
+# anything added later.
+#
+# NOTE ON WHAT IS DELIBERATELY ABSENT. nomic-embed-text has its own prefix scheme
+# (`search_document: ` / `search_query: `) and is NOT listed here. Adding it would be
+# correct for a new knowledge base and wrong for every existing one: those documents were
+# embedded without a prefix, and prefixing only the queries from now on would move the
+# question away from its own answers in vector space. There is no migration that fixes it
+# short of re-embedding every chunk, so the honest choice is to leave a model that has
+# already been used alone. EmbeddingGemma has this from its first day here, which is
+# exactly why it can have it at all.
+EMBEDDING_PROMPTS: dict[str, dict[str, str]] = {
+    # https://huggingface.co/google/embeddinggemma-300m — "Prompt instructions".
+    # The document side documents `title: {title | "none"} | text: {content}`. We pass the
+    # literal "none" rather than a real title on purpose: the title available here is
+    # derived from the filename and is identical for every chunk of a document, so feeding
+    # it in would pull all of them toward each other — the same homogenising effect that
+    # made `_embed_chunks` embed `content` instead of `contextual_content`.
+    "embeddinggemma": {
+        EMBED_TASK_QUERY: "task: search result | query: {text}",
+        EMBED_TASK_DOCUMENT: 'title: none | text: {text}',
+    },
+}
+
+
+def embedding_prompt_spec(model_id: str) -> dict[str, str] | None:
+    """The prefix templates for a model id, matching an Ollama tag to its base model.
+
+    `embeddinggemma`, `embeddinggemma:300m` and `embeddinggemma:300m-qat-q4_0` are the same
+    weights at different quantizations, so the tag is stripped before lookup. (They are
+    still distinct as far as stored vectors are concerned — `_embedded_model_for_resource`
+    compares the full model string — which is correct: quantization changes the numbers.)
+    """
+    if not model_id:
+        return None
+    return EMBEDDING_PROMPTS.get(model_id.split(":", 1)[0].strip().lower())
+
+
+def apply_embedding_prompt(model_id: str, texts: list[str], task: str) -> list[str]:
+    """Prefix each text as its model requires. A model with no spec is returned untouched.
+
+    Truncation to MAX_EMBEDDING_INPUT_CHARS happens on the *content*, before the prefix is
+    attached, so an over-long passage can never push the instruction out of its own input.
+    """
+    spec = embedding_prompt_spec(model_id)
+    template = spec.get(task) if spec else None
+    if not template:
+        return [text[:MAX_EMBEDDING_INPUT_CHARS] for text in texts]
+    return [template.format(text=text[:MAX_EMBEDDING_INPUT_CHARS]) for text in texts]
+
 
 def embedding_provider_options() -> list[dict]:
     """The catalogue the indexing UI renders, joined with each provider's display name."""
@@ -1163,8 +1255,22 @@ def embedding_model_spec(provider: str, model_id: str) -> dict | None:
     return None
 
 
-def embed_texts(db: Session, user_id: str, provider: str, model_id: str, texts: list[str]) -> list[list[float]]:
+def embed_texts(
+    db: Session,
+    user_id: str,
+    provider: str,
+    model_id: str,
+    texts: list[str],
+    task: str = EMBED_TASK_DOCUMENT,
+) -> list[list[float]]:
     """Embed a list of passages, resolving credentials the same way a chat call does.
+
+    `task` says whether these are documents being indexed or a question being asked, and it
+    matters for asymmetric models — see EMBEDDING_PROMPTS. It defaults to "document"
+    because that is the bulk case and because a wrong default there is the cheaper mistake:
+    documents are embedded once at ingestion, so an error is visible in the stored vectors,
+    whereas a query is embedded on every question and a wrong prefix would degrade every
+    search invisibly.
 
     Returns one vector per input, in order. Raises `LlmProviderError` on anything the
     caller should surface — an unconfigured key, an unknown provider, a provider that
@@ -1186,7 +1292,7 @@ def embed_texts(db: Session, user_id: str, provider: str, model_id: str, texts: 
 
     try:
         for index in range(0, len(texts), EMBEDDING_BATCH_SIZE):
-            batch = [text[:MAX_EMBEDDING_INPUT_CHARS] for text in texts[index : index + EMBEDDING_BATCH_SIZE]]
+            batch = apply_embedding_prompt(model_id, texts[index : index + EMBEDDING_BATCH_SIZE], task)
             if api_style == "openai":
                 produced = call_openai_embeddings(call.api_key, call.base_url, model_id, batch)
             elif api_style == "gemini":
