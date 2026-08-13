@@ -2007,7 +2007,74 @@ except ImportError:  # pragma: no cover - Python < 3.12
         return sum(map(operator.mul, left, right))
 
 
-MIN_SEMANTIC_SIMILARITY = 0.62
+# The similarity below which a semantic hit may not license an answer on its own.
+#
+# THIS IS A PROPERTY OF THE EMBEDDING MODEL, NOT A UNIVERSAL CONSTANT, and that is why it
+# is a table. Cosine similarity has no absolute meaning across models: each one places its
+# vectors in a differently-shaped space, so "0.62" is a strong match for one model and
+# unreachable for another. A single global floor is therefore guaranteed to be wrong for
+# some model, and wrong in the direction that is hardest to notice — the semantic branch
+# simply never fires, embeddings appear to be "on", and retrieval quietly behaves as if
+# they were off.
+#
+# That is exactly what happened with EmbeddingGemma. Measured against a 108-chunk indexed
+# PDF (Koenigsegg Gemera magazine, `tests/unit/test_semantic_floor.py` records the figures):
+#
+#   questions the document answers        0.28 – 0.64   (median ≈ 0.39)
+#   same-domain questions it does not     0.17 – 0.45
+#   unrelated questions                   0.06 – 0.14
+#
+# Under a 0.62 floor, one answerable question in twelve cleared it. "What is the engine's
+# cubic capacity" retrieved the bore/stroke spec table as its top hit at 0.36 — the correct
+# passage, found with no shared vocabulary at all, which is the entire reason embeddings
+# exist here — and was then refused for having too little *lexical* overlap.
+#
+# WHAT THIS FLOOR CAN AND CANNOT DO. Note the middle row overlaps the first: "what is the
+# Bugatti Chiron top speed" scores 0.45 against a supercar magazine, above four genuinely
+# answerable questions. No threshold separates those classes, and no relative measure does
+# either — a z-score against the corpus distribution was measured and overlaps just as
+# badly. Similarity measures topical relatedness, not whether the answer is present, so a
+# floor tuned to prove answer-presence is tuning for something the signal does not carry.
+#
+# So the floor's job is only to exclude the *unrelated*, which it separates cleanly. Judging
+# whether the passages actually contain the fact is left to the grounded LLM, which can read
+# them — and does: with these floors the Bugatti question retrieves Gemera passages and comes
+# back "I do not have enough information to answer this question", while the cubic-capacity
+# question comes back "a three-cylinder, 2-liter engine" with citations. That is also exactly
+# what the lexical branch already does, so this makes the two branches consistent rather than
+# leaving the semantic one stricter for no stated reason.
+DEFAULT_MIN_SEMANTIC_SIMILARITY = 0.62
+
+# Only models whose distribution has actually been measured appear here. Everything else
+# keeps the historical default: a model nobody has calibrated must not have a number
+# invented for it, because a too-low floor buys recall with confident wrong answers. The
+# consequence is that openai, gemini and mistral embeddings are still gated at 0.62 and may
+# well be under-firing in the same way — that is a known, unmeasured gap, not a decision.
+SEMANTIC_SIMILARITY_FLOORS: dict[str, float] = {
+    # Measured 2026-08-13. Unrelated questions top out at 0.14 and answerable ones bottom
+    # out at 0.28, so 0.20 sits in the gap with margin on both sides (0.06 / 0.08) rather
+    # than hugging either class.
+    "embeddinggemma": 0.20,
+}
+
+
+def semantic_similarity_floor(model_id: str | None) -> float:
+    """The floor for one embedding model, matching an Ollama tag to its base model.
+
+    `embeddinggemma`, `embeddinggemma:300m` and `embeddinggemma:300m-qat-q4_0` are the same
+    weights, so the tag is stripped — the same normalisation `embedding_prompt_spec` does,
+    and for the same reason: a table keyed on the full string silently misses every tagged
+    variant and falls back to the default, which is the failure this table exists to fix.
+    """
+    if not model_id:
+        return DEFAULT_MIN_SEMANTIC_SIMILARITY
+    base = model_id.split(":", 1)[0].strip().lower()
+    return SEMANTIC_SIMILARITY_FLOORS.get(base, DEFAULT_MIN_SEMANTIC_SIMILARITY)
+
+
+# Kept as a module attribute because tests and diagnostics reach for it by name, and because
+# a base with no embedded documents has no model to look a floor up for.
+MIN_SEMANTIC_SIMILARITY = DEFAULT_MIN_SEMANTIC_SIMILARITY
 
 # How many semantic candidates enter the fusion. Matches the per-variant depth `_rag_fusion`
 # already uses, so the two lists arrive at the fusion with comparable weight.
@@ -2299,13 +2366,19 @@ def _has_sufficient_evidence(
     `semantic` adds an OR branch, never a new requirement. Term coverage is the wrong test
     for a passage found by similarity — a chunk saying "motorcycle" answers a question about
     a "bike" while covering none of its words, and the lexical branch would refuse it. The
-    branch only fires above `MIN_SEMANTIC_SIMILARITY`, so a weak semantic hit cannot license
-    an answer on its own. Keeping this additive is what guarantees enabling embeddings on
-    one document can never make the system refuse something it used to answer.
+    branch only fires above the floor for the model that produced the vectors, so a weak
+    semantic hit cannot license an answer on its own. Keeping this additive is what
+    guarantees enabling embeddings on one document can never make the system refuse
+    something it used to answer.
+
+    The floor is looked up **per model** (see SEMANTIC_SIMILARITY_FLOORS). A single global
+    number was one model's scale imposed on every other model's, and it made this branch
+    unreachable for EmbeddingGemma — the passage was retrieved correctly and then discarded
+    for lacking the vocabulary overlap that finding it by meaning was supposed to replace.
     """
     if not results:
         return False
-    if semantic and semantic.top_similarity >= MIN_SEMANTIC_SIMILARITY:
+    if semantic and semantic.top_similarity >= semantic_similarity_floor(semantic.model):
         return True
     query_terms = set(_tokenize(query))
     if not query_terms:
