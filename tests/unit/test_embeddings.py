@@ -651,3 +651,92 @@ class TestOllamaBaseUrlIsResolvable:
 
     def test_other_providers_still_come_from_the_registry(self):
         assert llm.default_base_url("openai") == SUPPORTED_PROVIDERS["openai"]["default_base_url"]
+
+
+class TestAMiswiredCallSiteFailsLoudly:
+    """The review finding that the first version of this got wrong.
+
+    `apply_embedding_prompt` originally looked the task up and fell through to "no prefix"
+    on a miss. So a typo — `"querry"`, or a new call site inventing `"passage"` — produced
+    precisely the defect the prefixes exist to prevent: un-prefixed input to an asymmetric
+    model, nothing raised, nothing logged, and a search quietly returning less. A silent
+    fallback is the wrong shape for a mechanism whose entire purpose is preventing a silent
+    quality loss.
+    """
+
+    @pytest.mark.parametrize("bad_task", ["querry", "passage", "QUERY", "", "search"])
+    def test_an_unknown_task_raises_rather_than_dropping_the_prefix(self, bad_task):
+        with pytest.raises(LlmProviderError) as caught:
+            llm.apply_embedding_prompt("embeddinggemma", ["alpha"], bad_task)
+        assert "Unknown embedding task" in str(caught.value)
+        assert caught.value.status_code == 400
+
+    def test_it_is_rejected_for_a_model_with_no_spec_too(self):
+        """Deliberately not conditional on the model having a prompt spec.
+
+        Validating only where a spec exists means a miswired task sits harmlessly on
+        nomic-embed-text and starts losing quality the day that base is re-indexed with
+        EmbeddingGemma — the worst possible moment to find out.
+        """
+        with pytest.raises(LlmProviderError):
+            llm.apply_embedding_prompt("nomic-embed-text", ["alpha"], "querry")
+
+    def test_the_failure_surfaces_through_embed_texts_with_provider_context(self, db, monkeypatch, llm_log):
+        """It is raised inside embed_texts' try block, so the log line carries which
+        provider and model were involved — an error naming neither is barely an error."""
+        _capture_http(monkeypatch, lambda payload: {"embeddings": [[0.1]]})
+
+        with pytest.raises(LlmProviderError):
+            embed_texts(db, USER, "ollama", "embeddinggemma", ["alpha"], task="querry")
+
+        assert llm_log.records, "a miswired call site must reach the log"
+        assert llm_log.records[-1].extra_fields["model"] == "embeddinggemma"
+
+    def test_both_real_tasks_are_accepted(self):
+        for task in (llm.EMBED_TASK_QUERY, llm.EMBED_TASK_DOCUMENT):
+            assert llm.apply_embedding_prompt("embeddinggemma", ["alpha"], task)
+
+    def test_the_task_set_and_the_prompt_specs_agree(self):
+        """EMBED_TASKS is what validation accepts; the specs are what it can act on. A task
+        in one and not the other is either a rejection of something valid or a silent
+        pass-through of something unhandled."""
+        for model_id, spec in llm.EMBEDDING_PROMPTS.items():
+            assert set(spec) == set(llm.EMBED_TASKS), model_id
+
+
+class TestDefaultBaseUrlNormalizesItsArgument:
+    """`default_base_url` is module-level with no underscore, so the next caller may not
+    normalize. Both failure modes are silent-then-fatal, which is why it does it itself."""
+
+    @pytest.mark.parametrize("raw", ["ollama", "Ollama", "OLLAMA", "  ollama  "])
+    def test_casing_and_whitespace_still_reach_the_ollama_branch(self, raw, monkeypatch):
+        from core.config import get_settings
+
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama:11434")
+        get_settings.cache_clear()
+        try:
+            # Not just "does not crash": an un-normalized value that missed the `== "ollama"`
+            # branch would return the registry's localhost default, which inside a container
+            # points at this API's own port.
+            assert llm.default_base_url(raw) == "http://ollama:11434"
+        finally:
+            monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+            get_settings.cache_clear()
+
+    def test_a_canonical_provider_still_comes_from_the_registry(self):
+        assert llm.default_base_url("openai") == SUPPORTED_PROVIDERS["openai"]["default_base_url"]
+
+    @pytest.mark.parametrize("unknown", ["not-a-provider", "open-ai", "", "  "])
+    def test_an_unrecognised_provider_is_a_controlled_error_not_a_keyerror(self, unknown):
+        """A bare KeyError here is a text/plain 500 with no envelope — this app has no
+        global exception handler.
+
+        Note `open-ai` is in this list rather than resolving to `openai`: normalize_provider
+        maps `-` to `_`, and no key in the registry contains an underscore, so a hyphenated
+        spelling is simply not a name this app answers to. Rejecting it with a 400 is the
+        point; inventing an alias table would be a different change with a wider blast
+        radius, since normalize_provider guards every entry point in the module.
+        """
+        with pytest.raises(LlmProviderError) as caught:
+            llm.default_base_url(unknown)
+        assert caught.value.status_code == 400

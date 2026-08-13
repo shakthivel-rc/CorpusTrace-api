@@ -687,7 +687,18 @@ def default_base_url(provider: str) -> str:
     in the registry literal so SUPPORTED_PROVIDERS stays a plain data table that
     TestRegistryIntegrity can check, and so the value is read at call time rather than
     frozen at import.
+
+    Normalizes its own argument rather than trusting the caller to have done it. Every
+    call site does today, but this is a module-level function with no underscore, so the
+    next one might not — and the two failure modes it prevents are both silent-then-fatal:
+    an un-normalized "Ollama" or "open-ai" would miss the registry key and raise a bare
+    KeyError, which with no global exception handler in this app is a text/plain 500 with
+    no envelope; and "Ollama" would miss the `== "ollama"` branch and return the wrong
+    default even if the lookup happened to succeed. normalize_provider raises a controlled
+    LlmProviderError(400) for anything it does not recognise, which is what every other
+    entry point here already does.
     """
+    provider = normalize_provider(provider)
     if provider == "ollama":
         return get_settings().ollama_base_url
     return SUPPORTED_PROVIDERS[provider]["default_base_url"]
@@ -1169,6 +1180,10 @@ MAX_EMBEDDING_INPUT_CHARS = 8000
 # The two sides of a retrieval embedding. They are not interchangeable for every model.
 EMBED_TASK_DOCUMENT = "document"
 EMBED_TASK_QUERY = "query"
+# The closed set apply_embedding_prompt validates against. A third task would mean a third
+# template on every entry in EMBEDDING_PROMPTS, which is why this is a set and not a
+# convention: adding one has to be a deliberate edit in both places.
+EMBED_TASKS = frozenset({EMBED_TASK_DOCUMENT, EMBED_TASK_QUERY})
 
 # Models that require an instruction prefix, and what it is.
 #
@@ -1223,7 +1238,24 @@ def apply_embedding_prompt(model_id: str, texts: list[str], task: str) -> list[s
 
     Truncation to MAX_EMBEDDING_INPUT_CHARS happens on the *content*, before the prefix is
     attached, so an over-long passage can never push the instruction out of its own input.
+
+    An unrecognised `task` is an error, always — including for a model that has no prompt
+    spec at all. The first version only looked the task up and fell through to "no prefix"
+    when it missed, which meant a typo (`"querry"`, or a new call site inventing
+    `"passage"`) produced exactly the defect this whole mechanism exists to prevent:
+    un-prefixed input to an asymmetric model, no exception, no log line, and a search that
+    quietly returns less than it should.
+
+    Validated even without a spec because the alternative is a rule that changes with the
+    model: a miswired task would sit harmlessly on nomic-embed-text and then start losing
+    quality the day that base was re-indexed with EmbeddingGemma, which is the worst
+    possible time to discover it. `task` comes from code and never from user input, so
+    there is no request that can trigger this — only a call site that is wrong.
     """
+    if task not in EMBED_TASKS:
+        raise LlmProviderError(
+            f"Unknown embedding task {task!r} — expected one of {sorted(EMBED_TASKS)}", 400
+        )
     spec = embedding_prompt_spec(model_id)
     template = spec.get(task) if spec else None
     if not template:
