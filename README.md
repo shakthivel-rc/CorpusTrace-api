@@ -158,7 +158,7 @@ route modules.
 
 ## License
 
-Copyright 2026 <COPYRIGHT HOLDER>.
+Copyright 2026 SHAKTHIVEL RAVICHANDRAN.
 
 Licensed under the [Apache License, Version 2.0](LICENSE). You may use, modify and
 redistribute this software, including commercially, provided you retain the copyright
