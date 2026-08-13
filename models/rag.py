@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.mysql import CHAR
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy.dialects.mysql import CHAR, MEDIUMBLOB
 from sqlalchemy.orm import relationship
 
 from db.session import Base
@@ -32,16 +32,26 @@ class DocumentChunk(Base):
     char_start = Column(Integer, nullable=True)
     char_end = Column(Integer, nullable=True)
 
-    # The chunk's embedding, as a JSON array of floats — the same shape `terms_json` uses,
-    # for the same reason: MySQL here has no vector type, and retrieval already loads and
-    # scores every chunk of a resource in Python, so cosine similarity costs the same walk
-    # the lexical scorer was already doing.
+    # The chunk's embedding. All of these are NULL unless the uploader explicitly chose an
+    # embedding model for this document — NULL means "indexed lexically only", which is the
+    # default and the state of every chunk written before per-document settings existed.
     #
-    # All three are NULL unless the uploader explicitly chose an embedding model for this
-    # document. `embedding_model` is stored alongside the vector because vectors from two
-    # different models are not comparable — comparing them silently produces confident
-    # nonsense, so retrieval must be able to check before it does.
+    # `embedding_vector` is the live format: packed little-endian binary32, one vector, no
+    # separators (see `rag/vectors.py`). `embedding_json` is the original JSON-array format,
+    # kept readable so chunks indexed before the change keep answering questions and so the
+    # backfill that converts them stays reversible. Reads go through
+    # `vectors.load_embedding`, which prefers the blob; writes only ever produce the blob.
+    #
+    # `embedding_norm` is that vector's Euclidean length, stored so the cosine denominator
+    # is computed once at ingest rather than once per chunk per question. NULL means "not
+    # recorded" — compute it — not "zero".
+    #
+    # `embedding_model` sits beside the vector because vectors from two different models are
+    # not comparable: cosine between them is a number with no meaning that ranks with
+    # complete confidence, so retrieval must be able to check before it compares.
+    embedding_vector = Column(LargeBinary().with_variant(MEDIUMBLOB(), "mysql"), nullable=True)
     embedding_json = Column(Text, nullable=True)
+    embedding_norm = Column(Float(precision=53), nullable=True)
     embedding_model = Column(String(255), nullable=True)
     embedding_dim = Column(Integer, nullable=True)
 

@@ -32,7 +32,7 @@ def login_email_template(first_name: str, verify_url: str):
                 <table cellpadding="0" cellspacing="0" border="0" width="600" style="margin-top:20px;">
                 <tr>
                     <td align="center" style="font-size:12px; color:#888888; font-family:Arial, sans-serif;">
-                    &copy; 2026 NexaRAG. All rights reserved.
+                    &copy; 2026 SHAKTHIVEL RAVICHANDRAN. NexaRAG is open source under the Apache License 2.0.
                     </td>
                 </tr>
                 </table>
@@ -81,7 +81,7 @@ def otp_email_template(first_name: str, otp_code: str):
                 <table cellpadding="0" cellspacing="0" border="0" width="600" style="margin-top:20px;">
                 <tr>
                     <td align="center" style="font-size:12px; color:#888888; font-family:Arial, sans-serif;">
-                    &copy; 2026 NexaRAG. All rights reserved.
+                    &copy; 2026 SHAKTHIVEL RAVICHANDRAN. NexaRAG is open source under the Apache License 2.0.
                     </td>
                 </tr>
                 </table>
@@ -126,7 +126,7 @@ def reset_password_email_template(first_name: str, reset_url: str):
                 <table cellpadding="0" cellspacing="0" border="0" width="600" style="margin-top:20px;">
                 <tr>
                     <td align="center" style="font-size:12px; color:#888888; font-family:Arial, sans-serif;">
-                    &copy; 2026 NexaRAG. All rights reserved.
+                    &copy; 2026 SHAKTHIVEL RAVICHANDRAN. NexaRAG is open source under the Apache License 2.0.
                     </td>
                 </tr>
                 </table>

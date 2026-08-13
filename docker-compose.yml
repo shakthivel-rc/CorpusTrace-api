@@ -70,6 +70,11 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
       RAG_UPLOAD_DIR: /app/uploads/rag
+      # Where Ollama is, for local embeddings. `localhost` would be this container, so the
+      # service name is the only value that can work from in here. Harmless when the
+      # `embeddings` profile is not running: nothing calls Ollama unless a document was
+      # uploaded asking for one of its models.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       # Optional. Present so the entrypoint can seed on a first run.
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
       # Set this if you ever intend to rotate SECRET_KEY: it doubles as the fallback
@@ -93,6 +98,41 @@ services:
     ports:
       - "${APP_PORT:-8080}:80"
 
+  # Local embeddings, off by default.
+  #
+  #   docker compose --profile embeddings up -d
+  #   docker compose --profile embeddings exec ollama ollama pull embeddinggemma
+  #
+  # Behind a profile because it is opt-in in every sense: it pulls a ~1 GB image, then a
+  # 622 MB model, and it is only of use to someone who has decided to embed a document.
+  # The rest of the stack neither starts it nor depends on it, and a knowledge base that
+  # was never configured for embeddings never calls it.
+  #
+  # Why this is the recommended way to run EmbeddingGemma here: Ollama's library serves the
+  # same weights as google/embeddinggemma-300m on Hugging Face, but without the gate — the
+  # HF repo requires an account, an accepted Gemma licence and a token before anything can
+  # be downloaded, none of which an application can do on the operator's behalf. And the
+  # documents never leave this machine, which is the part that matters for a RAG tool
+  # holding somebody's contracts.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["embeddings"]
+    restart: unless-stopped
+    volumes:
+      # Pulled models live here. Without it, every restart re-downloads 622 MB.
+      - ollama-models:/root/.ollama
+    ports:
+      # Loopback only, like the database: an unauthenticated model server on 0.0.0.0 is an
+      # open inference endpoint for the whole local network.
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
 volumes:
   db-data:
   uploads:
+  ollama-models:

@@ -23,9 +23,11 @@ import time
 
 import jwt
 import pytest
+from sqlalchemy import or_
 
 import rag.jobs as jobs
 import rag.service as rag_service
+from services.llm_provider import EMBED_TASK_DOCUMENT
 from core.config import get_settings
 from models.file import File
 from models.permissions import Permission
@@ -567,7 +569,12 @@ class TestEmbeddingsAreOptIn:
             db.query(DocumentChunk)
             .filter(
                 DocumentChunk.resource_id == resource_id,
-                DocumentChunk.embedding_json.isnot(None),
+                # Both formats, so this keeps meaning "no vector" rather than "no vector in
+                # whichever column ingestion happened to be writing when it was written".
+                or_(
+                    DocumentChunk.embedding_vector.isnot(None),
+                    DocumentChunk.embedding_json.isnot(None),
+                ),
             )
             .count()
             == 0
@@ -599,8 +606,13 @@ class TestEmbeddingsAreOptIn:
         proving nothing."""
         calls: list[int] = []
 
-        def _fake_embed(db_session, user_id, provider, model_id, texts):
+        # `task` is accepted, not swallowed by **kwargs: a double that quietly absorbs a new
+        # argument is how a call site stops being exercised with nothing going red. Note
+        # this control test caught exactly that — run_job's per-document `except Exception`
+        # turned the TypeError into a failed document, so `calls` stayed empty.
+        def _fake_embed(db_session, user_id, provider, model_id, texts, task=EMBED_TASK_DOCUMENT):
             calls.append(len(texts))
+            assert task == EMBED_TASK_DOCUMENT, "ingestion embeds documents, not queries"
             return [[0.1, 0.2, 0.3] for _ in texts]
 
         monkeypatch.setattr(rag_service, "embed_texts", _fake_embed)
@@ -616,11 +628,17 @@ class TestEmbeddingsAreOptIn:
         jobs.run_job(db, jobs.claim_next_job(db))
 
         assert sum(calls) > 0
+        # Asserted against `embedding_vector` specifically, not against "either column is
+        # populated": this is the test that pins which format ingestion writes today. The
+        # legacy JSON column must stay empty on a fresh write, or every new row would be
+        # carrying a second copy of the vector that nothing reads.
         embedded = (
             db.query(DocumentChunk)
             .filter(
                 DocumentChunk.resource_id == resource_id,
-                DocumentChunk.embedding_json.isnot(None),
+                DocumentChunk.embedding_vector.isnot(None),
+                DocumentChunk.embedding_json.is_(None),
+                DocumentChunk.embedding_norm.isnot(None),
             )
             .count()
         )

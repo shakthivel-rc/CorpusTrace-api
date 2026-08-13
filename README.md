@@ -40,6 +40,15 @@ Those are stored as a JSON array of floats beside the term map, cosine-scored in
 into the lexical ranking. They are opt-in per document and off by default, because turning them on
 sends that document's text to a third party and usually costs money.
 
+**Ollama is the exception** — it runs on your own machine, so nothing leaves it. `make embeddings`
+starts it and pulls Google's EmbeddingGemma (622 MB). Note that this repository ships **no model
+weights**: that command fetches them from Ollama's own library, so Gemma reaches you through its
+own distribution channel rather than through this project. Running it makes you the operator, and
+the [Gemma Terms of Use](https://ai.google.dev/gemma/terms) govern your use — in particular the
+[Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy), which binds every
+operator who runs the model, not only those who redistribute it. Google claims no rights in the
+vectors it produces.
+
 The practical consequence, unless you turn embeddings on: a question sharing no vocabulary with your
 documents returns nothing. There is also **no OCR**, so a scanned image-only PDF has no text layer
 to extract.
@@ -146,3 +155,19 @@ There is no global exception handler, so each route handles its own error paths.
 OpenAPI, Swagger and ReDoc are disabled in all environments (`docs_url=None`,
 `redoc_url=None`, `openapi_url=None`), so there is no machine-readable contract — read the
 route modules.
+
+## License
+
+Copyright 2026 SHAKTHIVEL RAVICHANDRAN.
+
+Licensed under the [Apache License, Version 2.0](LICENSE). You may use, modify and
+redistribute this software, including commercially, provided you retain the copyright
+notice, state your changes, and include the [NOTICE](NOTICE) file. The license also
+grants an explicit patent licence from every contributor.
+
+Third-party dependency licenses — including the GPL-licensed `mysqlclient` pin, which
+is unused and recommended for removal — are catalogued in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+"NexaRAG" is a project name, not a licensed mark. Apache-2.0 grants no trademark rights
+(§6), so forks may use the code but should not present themselves as NexaRAG.

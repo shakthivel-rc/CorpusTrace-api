@@ -66,6 +66,18 @@ revision: ## Autogenerate a migration — READ IT before applying (see CLAUDE.md
 seed: ## Seed the superadmin and default roles
 	$(COMPOSE) exec api python -m seeders.user_seeder
 
+# --- local embeddings (optional) ---------------------------------------------------------
+
+embeddings: ## Start Ollama and pull EmbeddingGemma — free local embeddings, nothing leaves the machine
+	$(COMPOSE) --profile embeddings up -d ollama
+	@echo "pulling embeddinggemma (622 MB, once)…"
+	$(COMPOSE) --profile embeddings exec ollama ollama pull embeddinggemma
+	@echo
+	@echo "Done. In the app: Knowledge Bases → upload → Embeddings → Ollama Local → embeddinggemma."
+
+embeddings-down: ## Stop Ollama, keeping the downloaded model
+	$(COMPOSE) --profile embeddings stop ollama
+
 # --- development (native) ---------------------------------------------------------------
 
 dev: ## Run both dev servers with hot reload, on the ports in .env (Ctrl-C stops both)

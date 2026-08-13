@@ -523,3 +523,220 @@ class TestKeysAreNeverLogged:
 
         # SQLite would not catch a length overflow, and neither would a log — assert directly.
         assert len(llm_log.records[-1].extra_fields["error"]) <= 300
+
+
+class TestAsymmetricPrompts:
+    """EmbeddingGemma's task prefixes.
+
+    This is the quietest failure mode in the whole file. EmbeddingGemma is *asymmetric*: it
+    is trained so a question and the passage answering it are encoded differently, and the
+    only thing telling it which is which is a literal string on the front of the input.
+    Drop the prefix and nothing raises, nothing logs, and the vector is still 768 floats —
+    it is simply a worse vector, and the symptom is a search that finds slightly less than
+    it should, forever, with no way to notice from inside the app.
+
+    Templates are from the model card at huggingface.co/google/embeddinggemma-300m.
+    """
+
+    def test_a_question_and_a_passage_are_prefixed_differently(self):
+        query = llm.apply_embedding_prompt("embeddinggemma", ["how do I bleed the brakes"], llm.EMBED_TASK_QUERY)
+        document = llm.apply_embedding_prompt("embeddinggemma", ["Brake bleeding procedure"], llm.EMBED_TASK_DOCUMENT)
+
+        assert query == ["task: search result | query: how do I bleed the brakes"]
+        assert document == ["title: none | text: Brake bleeding procedure"]
+        # The whole point of an asymmetric model: the two sides must not be identical.
+        assert query[0] != document[0]
+
+    def test_a_quantized_tag_resolves_to_the_same_weights(self):
+        """`embeddinggemma:300m-qat-q4_0` is the same model at a different quantization.
+
+        Ollama tags are `model:tag`, and a prefix table keyed on the full string would
+        silently skip the prefix for every tag but the bare one — the failure being, again,
+        nothing visible.
+        """
+        for tag in ("embeddinggemma", "embeddinggemma:300m", "embeddinggemma:300m-qat-q4_0", "EmbeddingGemma:latest"):
+            assert llm.apply_embedding_prompt(tag, ["x"], llm.EMBED_TASK_QUERY) == [
+                "task: search result | query: x"
+            ], tag
+
+    def test_a_model_with_no_spec_is_passed_through_untouched(self):
+        """Deliberate, and load-bearing.
+
+        nomic-embed-text has its own prefix scheme and is NOT in the table. Adding it would
+        be correct for a new knowledge base and wrong for every existing one: those chunks
+        were embedded with no prefix, so prefixing the queries alone would move the question
+        away from its own answers. Only a model with no stored vectors anywhere can safely
+        acquire a prefix.
+        """
+        assert llm.apply_embedding_prompt("nomic-embed-text", ["alpha"], llm.EMBED_TASK_QUERY) == ["alpha"]
+        assert llm.apply_embedding_prompt("text-embedding-3-small", ["alpha"], llm.EMBED_TASK_DOCUMENT) == ["alpha"]
+        assert llm.apply_embedding_prompt("", ["alpha"], llm.EMBED_TASK_QUERY) == ["alpha"]
+
+    def test_the_instruction_cannot_be_truncated_out_of_its_own_input(self):
+        """Content is cut to the cap first, then the prefix is added.
+
+        The other order lets an over-long passage push the instruction past the limit, so
+        the one input that most needs the prefix is the one that loses it.
+        """
+        long_text = "z" * (llm.MAX_EMBEDDING_INPUT_CHARS + 500)
+
+        prefixed = llm.apply_embedding_prompt("embeddinggemma", [long_text], llm.EMBED_TASK_DOCUMENT)[0]
+
+        assert prefixed.startswith("title: none | text: ")
+        assert len(prefixed) == len("title: none | text: ") + llm.MAX_EMBEDDING_INPUT_CHARS
+
+    def test_the_prefix_reaches_the_wire(self, db, monkeypatch):
+        """End to end through embed_texts, because a helper nobody calls proves nothing."""
+        calls = _capture_http(monkeypatch, lambda payload: {"embeddings": [[0.1, 0.2]] * len(payload["input"])})
+
+        embed_texts(db, USER, "ollama", "embeddinggemma", ["the passage"], task=llm.EMBED_TASK_DOCUMENT)
+        embed_texts(db, USER, "ollama", "embeddinggemma", ["the question"], task=llm.EMBED_TASK_QUERY)
+
+        assert calls[0]["payload"]["input"] == ["title: none | text: the passage"]
+        assert calls[1]["payload"]["input"] == ["task: search result | query: the question"]
+
+    def test_the_default_task_is_document(self, db, monkeypatch):
+        """Documents are the bulk case, and the cheaper side to get wrong: they are embedded
+        once at ingestion, where the mistake is inspectable in the stored vectors. A query is
+        embedded on every question, where it would degrade every search invisibly."""
+        calls = _capture_http(monkeypatch, lambda payload: {"embeddings": [[0.1, 0.2]]})
+
+        embed_texts(db, USER, "ollama", "embeddinggemma", ["no task given"])
+
+        assert calls[0]["payload"]["input"] == ["title: none | text: no task given"]
+
+
+class TestEmbeddingGemmaIsOffered:
+    def test_it_is_listed_for_ollama_and_recommended(self):
+        models = SUPPORTED_EMBEDDING_PROVIDERS["ollama"]["models"]
+        gemma = next((model for model in models if model["id"] == "embeddinggemma"), None)
+
+        assert gemma is not None, "embeddinggemma must be offered — it is the free local default"
+        assert gemma["dimensions"] == 768
+        assert gemma["recommended"] is True
+        # Exactly one recommendation per provider, or the UI has to pick between them.
+        assert sum(1 for model in models if model["recommended"]) == 1
+
+    def test_every_prefixed_model_is_actually_offered(self):
+        """A prompt spec for a model nobody can select is dead code that reads as coverage."""
+        offered = {
+            model["id"].split(":", 1)[0]
+            for spec in SUPPORTED_EMBEDDING_PROVIDERS.values()
+            for model in spec["models"]
+        }
+        assert set(llm.EMBEDDING_PROMPTS) <= offered
+
+    def test_every_prompt_spec_covers_both_sides(self):
+        """A spec with only one side is worse than none: it would prefix the documents and
+        not the query, which is precisely the mismatch the prefixes exist to prevent."""
+        for model_id, spec in llm.EMBEDDING_PROMPTS.items():
+            assert set(spec) == {llm.EMBED_TASK_QUERY, llm.EMBED_TASK_DOCUMENT}, model_id
+            assert all("{text}" in template for template in spec.values()), model_id
+
+
+class TestOllamaBaseUrlIsResolvable:
+    def test_the_default_comes_from_settings_not_the_registry(self, monkeypatch):
+        """Inside a container, localhost is the container — so the registry's default aims
+        the embedding call at this API's own port. Compose sets OLLAMA_BASE_URL to the
+        service name, and only a setting read at call time can carry that."""
+        from core.config import get_settings
+
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama:11434")
+        get_settings.cache_clear()
+        try:
+            assert llm.default_base_url("ollama") == "http://ollama:11434"
+        finally:
+            monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+            get_settings.cache_clear()
+
+    def test_other_providers_still_come_from_the_registry(self):
+        assert llm.default_base_url("openai") == SUPPORTED_PROVIDERS["openai"]["default_base_url"]
+
+
+class TestAMiswiredCallSiteFailsLoudly:
+    """The review finding that the first version of this got wrong.
+
+    `apply_embedding_prompt` originally looked the task up and fell through to "no prefix"
+    on a miss. So a typo — `"querry"`, or a new call site inventing `"passage"` — produced
+    precisely the defect the prefixes exist to prevent: un-prefixed input to an asymmetric
+    model, nothing raised, nothing logged, and a search quietly returning less. A silent
+    fallback is the wrong shape for a mechanism whose entire purpose is preventing a silent
+    quality loss.
+    """
+
+    @pytest.mark.parametrize("bad_task", ["querry", "passage", "QUERY", "", "search"])
+    def test_an_unknown_task_raises_rather_than_dropping_the_prefix(self, bad_task):
+        with pytest.raises(LlmProviderError) as caught:
+            llm.apply_embedding_prompt("embeddinggemma", ["alpha"], bad_task)
+        assert "Unknown embedding task" in str(caught.value)
+        assert caught.value.status_code == 400
+
+    def test_it_is_rejected_for_a_model_with_no_spec_too(self):
+        """Deliberately not conditional on the model having a prompt spec.
+
+        Validating only where a spec exists means a miswired task sits harmlessly on
+        nomic-embed-text and starts losing quality the day that base is re-indexed with
+        EmbeddingGemma — the worst possible moment to find out.
+        """
+        with pytest.raises(LlmProviderError):
+            llm.apply_embedding_prompt("nomic-embed-text", ["alpha"], "querry")
+
+    def test_the_failure_surfaces_through_embed_texts_with_provider_context(self, db, monkeypatch, llm_log):
+        """It is raised inside embed_texts' try block, so the log line carries which
+        provider and model were involved — an error naming neither is barely an error."""
+        _capture_http(monkeypatch, lambda payload: {"embeddings": [[0.1]]})
+
+        with pytest.raises(LlmProviderError):
+            embed_texts(db, USER, "ollama", "embeddinggemma", ["alpha"], task="querry")
+
+        assert llm_log.records, "a miswired call site must reach the log"
+        assert llm_log.records[-1].extra_fields["model"] == "embeddinggemma"
+
+    def test_both_real_tasks_are_accepted(self):
+        for task in (llm.EMBED_TASK_QUERY, llm.EMBED_TASK_DOCUMENT):
+            assert llm.apply_embedding_prompt("embeddinggemma", ["alpha"], task)
+
+    def test_the_task_set_and_the_prompt_specs_agree(self):
+        """EMBED_TASKS is what validation accepts; the specs are what it can act on. A task
+        in one and not the other is either a rejection of something valid or a silent
+        pass-through of something unhandled."""
+        for model_id, spec in llm.EMBEDDING_PROMPTS.items():
+            assert set(spec) == set(llm.EMBED_TASKS), model_id
+
+
+class TestDefaultBaseUrlNormalizesItsArgument:
+    """`default_base_url` is module-level with no underscore, so the next caller may not
+    normalize. Both failure modes are silent-then-fatal, which is why it does it itself."""
+
+    @pytest.mark.parametrize("raw", ["ollama", "Ollama", "OLLAMA", "  ollama  "])
+    def test_casing_and_whitespace_still_reach_the_ollama_branch(self, raw, monkeypatch):
+        from core.config import get_settings
+
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama:11434")
+        get_settings.cache_clear()
+        try:
+            # Not just "does not crash": an un-normalized value that missed the `== "ollama"`
+            # branch would return the registry's localhost default, which inside a container
+            # points at this API's own port.
+            assert llm.default_base_url(raw) == "http://ollama:11434"
+        finally:
+            monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+            get_settings.cache_clear()
+
+    def test_a_canonical_provider_still_comes_from_the_registry(self):
+        assert llm.default_base_url("openai") == SUPPORTED_PROVIDERS["openai"]["default_base_url"]
+
+    @pytest.mark.parametrize("unknown", ["not-a-provider", "open-ai", "", "  "])
+    def test_an_unrecognised_provider_is_a_controlled_error_not_a_keyerror(self, unknown):
+        """A bare KeyError here is a text/plain 500 with no envelope — this app has no
+        global exception handler.
+
+        Note `open-ai` is in this list rather than resolving to `openai`: normalize_provider
+        maps `-` to `_`, and no key in the registry contains an underscore, so a hyphenated
+        spelling is simply not a name this app answers to. Rejecting it with a 400 is the
+        point; inventing an alias table would be a different change with a wider blast
+        radius, since normalize_provider guards every entry point in the module.
+        """
+        with pytest.raises(LlmProviderError) as caught:
+            llm.default_base_url(unknown)
+        assert caught.value.status_code == 400
