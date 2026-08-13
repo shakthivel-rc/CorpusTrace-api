@@ -15,13 +15,13 @@ import shutil
 import uuid
 import zipfile
 from pathlib import Path
-from typing import Callable, Iterable, Iterator
+from typing import Callable, Iterable, Iterator, Sequence
 from xml.etree import ElementTree
 
 from fastapi import UploadFile
 from pypdf import PdfReader
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session, defer
 
 from core.config import get_settings
 from models.file import File
@@ -30,6 +30,10 @@ from models.rag import DocumentChunk, RagGraphEdge, RagGraphEntity
 from models.resource import Resource
 from rag import chunking
 from rag.chunking import IndexingConfig
+# Imported by name rather than as a module: `vectors` is already the local variable holding
+# a batch of embeddings in two functions here, and a module shadowed by a list of floats
+# fails at the call site rather than at the import.
+from rag.vectors import encode_embedding, load_embedding, sumprod as _sumprod, vector_norm
 from services.llm_provider import (
     EMBED_TASK_DOCUMENT,
     EMBED_TASK_QUERY,
@@ -43,6 +47,38 @@ from services.llm_provider import (
 
 
 logger = logging.getLogger("nexarag.rag")
+
+
+def _has_embedding():
+    """SQL for "this chunk carries a vector", in either storage format.
+
+    Written once and reused because the obvious spelling is now wrong. Every caller used to
+    ask `embedding_json IS NOT NULL`, which meant "embedded" right up until writes moved to
+    the packed binary column and left that field NULL on every new row — at which point the
+    same expression starts reporting a freshly embedded document as keyword-only, silently,
+    in the two places that decide whether a base has embeddings at all.
+
+    `embedding_dim` would be a shorter predicate and it is deliberately not used: it is
+    bookkeeping that happens to be written beside the vector, so a row where it disagreed
+    with the data would answer this question wrongly. This asks about the vector itself.
+    """
+    return or_(
+        DocumentChunk.embedding_vector.isnot(None),
+        DocumentChunk.embedding_json.isnot(None),
+    )
+
+
+# The vector columns, excluded from the retrieval query that loads every chunk of a resource.
+#
+# Retrieval loads whole `DocumentChunk` rows, and a 768-dimension vector is ~3 KB of blob (or
+# ~7 KB of JSON on a row that predates the format change) attached to every one of them. That
+# was being read on every question — including on lexical-only modes and on bases where no
+# semantic branch would run at all. `_semantic_retrieval` fetches the vectors it needs in one
+# separate keyed query instead, so this deferral costs nothing and never triggers a lazy load.
+_DEFER_VECTORS = (
+    defer(DocumentChunk.embedding_vector),
+    defer(DocumentChunk.embedding_json),
+)
 
 # Ingestion writes user- and document-derived strings into VARCHAR columns. MySQL rejects
 # an over-long value outright (error 1406), and with no global exception handler that
@@ -530,7 +566,7 @@ def _embed_chunks(
             raise IngestionCancelled()
         batch = chunks[start : start + llm_embedding_batch_size()]
         try:
-            vectors = embed_texts(
+            batch_vectors = embed_texts(
                 db, user_id, config.embedding_provider, config.embedding_model,
                 [chunk.content for chunk in batch],
                 task=EMBED_TASK_DOCUMENT,
@@ -550,10 +586,16 @@ def _embed_chunks(
             )
             return embedded, str(exc)[:MAX_EMBEDDING_ERROR_CHARS]
 
-        for chunk, vector in zip(batch, vectors):
-            chunk.embedding_json = json.dumps([round(value, 6) for value in vector])
+        for chunk, vector in zip(batch, batch_vectors):
+            # Packed binary32 rather than a JSON array of decimals: retrieval reads this
+            # column for every chunk of the resource on every question, and parsing that
+            # text back was 78% of the cost of doing so. `embedding_json` is left NULL —
+            # writing both would double the storage to keep a copy nothing reads.
+            blob, norm, dimensions = encode_embedding(vector)
+            chunk.embedding_vector = blob
+            chunk.embedding_norm = norm
+            chunk.embedding_dim = dimensions
             chunk.embedding_model = (config.embedding_model or "")[:MAX_VARCHAR_CHARS]
-            chunk.embedding_dim = len(vector)
             embedded += 1
 
     return embedded, None
@@ -660,7 +702,7 @@ def list_resource_documents(db: Session, user_id: str, resource_id: str) -> list
         )
         .filter(
             DocumentChunk.resource_id == resource_id,
-            DocumentChunk.embedding_json.isnot(None),
+            _has_embedding(),
         )
         .group_by(DocumentChunk.file_id)
         .all()
@@ -822,6 +864,9 @@ def get_user_chunk(db: Session, user_id: str, chunk_id: str) -> DocumentChunk | 
     """The chunk behind a citation, scoped to the caller's own resources."""
     return (
         db.query(DocumentChunk)
+        # `serialize_chunk` returns text and position; the vector is never part of the
+        # evidence payload and has no business crossing the wire to fetch a passage.
+        .options(*_DEFER_VECTORS)
         .join(Resource, DocumentChunk.resource_id == Resource.id)
         .filter(
             DocumentChunk.id == chunk_id,
@@ -976,6 +1021,7 @@ def _plan_answer(
 
     chunks = (
         db.query(DocumentChunk)
+        .options(*_DEFER_VECTORS)
         .filter(DocumentChunk.resource_id == resource_id)
         .order_by(DocumentChunk.chunk_index.asc())
         .all()
@@ -1992,19 +2038,12 @@ def _score_chunk(
 # is exactly the case this feature exists for and exactly the case that is hardest to
 # verify by eye. Below it, a semantic hit still helps ranking; it just cannot by itself
 # license an answer.
-# Dot product in C rather than a Python-level generator. An embedding is 768–3072 floats and
-# every chunk of the resource is scored against the question, so the naive `sum(a * b for
-# a, b in zip(...))` was ~3000 interpreted float operations per chunk — measurably a quarter
-# of semantic retrieval on a 500-chunk base. `math.sumprod` landed in Python 3.12 (which is
-# what the Dockerfile pins); the fallback keeps this importable on 3.11 rather than turning a
-# performance detail into a hard version requirement.
-try:
-    from math import sumprod as _sumprod
-except ImportError:  # pragma: no cover - Python < 3.12
-    def _sumprod(left, right):
-        if len(left) != len(right):
-            raise ValueError("inputs are not the same length")
-        return sum(map(operator.mul, left, right))
+# `_sumprod` is imported from `rag.vectors` at the top of this module: a C-level fused dot
+# product, defined beside the storage format it is applied to so there is one interpreter
+# fallback to keep correct rather than two. An embedding is 768–3072 floats and every chunk
+# of the resource is scored against the question, so the naive `sum(a * b for a, b in
+# zip(...))` was ~3000 interpreted float operations per chunk — a measurable quarter of
+# semantic retrieval on a 500-chunk base.
 
 
 # The similarity below which a semantic hit may not license an answer on its own.
@@ -2113,7 +2152,7 @@ def _embedded_model_for_resource(db: Session, resource_id: str) -> tuple[str, st
             File.resource_id == resource_id,
             File.embedding_provider.isnot(None),
             File.embedding_model.isnot(None),
-            DocumentChunk.embedding_json.isnot(None),
+            _has_embedding(),
         )
         .group_by(File.embedding_provider, File.embedding_model)
         .order_by(func.count(DocumentChunk.id).desc())
@@ -2144,27 +2183,32 @@ def _semantic_retrieval(
         # and the passage answering it are encoded differently, and the only thing telling
         # it which is which is the prefix this task selects — embed a question as if it
         # were a document and it lands in the wrong neighbourhood of its own answers.
-        vectors = embed_texts(db, user_id, provider, model, [query], task=EMBED_TASK_QUERY)
+        query_vectors = embed_texts(db, user_id, provider, model, [query], task=EMBED_TASK_QUERY)
     except LlmProviderError as exc:
         logger.info(
             "semantic retrieval unavailable, continuing lexically",
             extra={"extra_fields": {"provider": provider, "model": model, "error": str(exc)[:200]}},
         )
         return _SemanticRetrieval()
-    if not vectors:
+    if not query_vectors:
         return _SemanticRetrieval()
 
-    query_vector = vectors[0]
-    query_norm = math.sqrt(sum(value * value for value in query_vector))
+    query_vector = query_vectors[0]
+    query_norm = math.sqrt(_sumprod(query_vector, query_vector))
     if not query_norm:
         return _SemanticRetrieval()
 
+    stored = _stored_vectors(db, resource_id, model)
     scored: list[tuple[float, DocumentChunk]] = []
     for chunk in chunks:
-        # Comparing across models is the one thing that must not happen silently.
-        if not chunk.embedding_json or chunk.embedding_model != model:
+        entry = stored.get(chunk.id)
+        if entry is None:
+            # Either this chunk has no vector, or it has one from a different model. The
+            # query that built `stored` filtered on the model, so both cases land here and
+            # comparing across models cannot happen by omission.
             continue
-        similarity = _cosine(query_vector, query_norm, chunk)
+        chunk_vector, chunk_norm = entry
+        similarity = _cosine(query_vector, query_norm, chunk_vector, chunk_norm)
         if similarity > 0:
             scored.append((similarity, chunk))
 
@@ -2180,23 +2224,80 @@ def _semantic_retrieval(
     )
 
 
-def _cosine(query_vector: list[float], query_norm: float, chunk: DocumentChunk) -> float:
-    try:
-        chunk_vector = json.loads(chunk.embedding_json)
-    except (TypeError, ValueError, json.JSONDecodeError):
+def _stored_vectors(
+    db: Session, resource_id: str, model: str
+) -> dict[str, tuple[Sequence[float], float]]:
+    """Every vector in this resource that was produced by `model`, keyed by chunk id.
+
+    ONE QUERY, AND ONLY THE COLUMNS A COSINE NEEDS. This exists as a separate read rather
+    than as attributes on the chunks retrieval already loaded, for two reasons:
+
+    * the chunk load is deferred against these columns (`_DEFER_VECTORS`), so lexical-only
+      questions — the default, and every base with no embeddings — stop dragging kilobytes
+      of vector per chunk across the wire for nothing;
+    * filtering on the model in SQL means a base holding two models reads only the dominant
+      one's vectors, instead of loading both and discarding half in Python.
+
+    A chunk absent from the returned map has no usable vector *for this model*. That is a
+    normal state, not an error: partially embedded bases and mixed-model bases are both
+    supported, and both simply score lexically for the chunks that fall out here.
+    """
+    rows = (
+        db.query(
+            DocumentChunk.id,
+            DocumentChunk.embedding_vector,
+            DocumentChunk.embedding_json,
+            DocumentChunk.embedding_norm,
+        )
+        .filter(
+            DocumentChunk.resource_id == resource_id,
+            DocumentChunk.embedding_model == model,
+            _has_embedding(),
+        )
+        .all()
+    )
+
+    loaded: dict[str, tuple[Sequence[float], float]] = {}
+    for chunk_id, blob, json_text, norm in rows:
+        values = load_embedding(blob, json_text)
+        if values is None:
+            # Corrupt or unreadable. Dropped silently and scored lexically: this runs on a
+            # chat request, and there is no global exception handler to catch a raise here.
+            continue
+        # A stored norm is the common path. It is recomputed when absent — every row
+        # written before the column existed, and any row whose backfill was interrupted.
+        loaded[chunk_id] = (values, norm if norm else vector_norm(values))
+    return loaded
+
+
+def _cosine(
+    query_vector: Sequence[float],
+    query_norm: float,
+    chunk_vector: Sequence[float],
+    chunk_norm: float,
+) -> float:
+    """Cosine similarity between a question and one chunk, or 0.0 if it cannot mean anything.
+
+    Takes decoded numbers rather than a `DocumentChunk`, so the storage format is entirely
+    `rag/vectors.py`'s problem and this is arithmetic that can be reasoned about on its own.
+    Every rejection below returns 0.0 rather than raising, because a cosine is a confident,
+    well-behaved-looking float in [-1, 1]: computing one from mismatched data does not look
+    wrong, it just ranks an unrelated passage first and an answer gets written from it.
+    """
+    if len(chunk_vector) != len(query_vector):
+        # Different models, despite the name matching — a model renamed under the same id,
+        # or a provider changing dimensions between generations. Scoring the overlap would
+        # rank on a prefix of a vector.
         return 0.0
-    if not isinstance(chunk_vector, list) or len(chunk_vector) != len(query_vector):
-        # A dimension mismatch means these vectors came from different models despite the
-        # name matching. Scoring them anyway would produce a plausible number from nothing.
+    if not chunk_norm or not query_norm:
+        # An all-zero vector, which some providers return for an empty or unsupported
+        # passage. Dividing by it is a ZeroDivisionError mid-retrieval — an unhandled 500.
         return 0.0
-    try:
-        dot = _sumprod(query_vector, chunk_vector)
-        norm = math.sqrt(_sumprod(chunk_vector, chunk_vector))
-    except (TypeError, ValueError):
-        return 0.0
-    if not norm:
-        return 0.0
-    return dot / (query_norm * norm)
+    similarity = _sumprod(query_vector, chunk_vector) / (query_norm * chunk_norm)
+    # NaN and ±inf can only arrive from a corrupted blob that still decoded to the right
+    # length. They compare False against every threshold in this file except `!=`, so they
+    # would slip through some gates and not others; 0.0 is the one answer that behaves.
+    return similarity if math.isfinite(similarity) else 0.0
 
 
 def _blend_semantic(

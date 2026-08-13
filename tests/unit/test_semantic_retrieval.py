@@ -24,9 +24,12 @@ from collections import Counter
 from itertools import count
 
 import pytest
+from sqlalchemy import event
+from sqlalchemy import inspect as sqlalchemy_inspect
 
 import rag.service as rag_service
 from rag import chunking
+from rag.vectors import encode_embedding
 from models.file import File
 from models.rag import DocumentChunk
 from models.resource import Resource
@@ -65,6 +68,16 @@ def _vector(similarity: float) -> list[float]:
 # Seeding helpers — rows are built directly rather than through upload so the vectors
 # are exactly the ones the assertion talks about.
 # ---------------------------------------------------------------------------
+
+
+def _store_vector(chunk: DocumentChunk, vector: list[float], model: str | None) -> DocumentChunk:
+    """Attach a vector to a chunk exactly as `_embed_chunks` does."""
+    blob, norm, dimensions = encode_embedding(vector)
+    chunk.embedding_vector = blob
+    chunk.embedding_norm = norm
+    chunk.embedding_dim = dimensions
+    chunk.embedding_model = model
+    return chunk
 
 
 def _resource(db, name: str = "Daytona", owner: str = OWNER) -> Resource:
@@ -109,9 +122,10 @@ def _chunk(
         terms_json=json.dumps(dict.fromkeys(_tokenize(text), 1)),
     )
     if vector is not None:
-        chunk.embedding_json = json.dumps(vector)
-        chunk.embedding_model = model if model is not None else file_row.embedding_model
-        chunk.embedding_dim = len(vector)
+        # Written the way ingestion writes it — packed binary32 plus its norm. A test that
+        # seeded the legacy JSON column would be exercising the compatibility path while
+        # claiming to exercise the live one.
+        _store_vector(chunk, vector, model if model is not None else file_row.embedding_model)
     db.add(chunk)
     db.flush()
     return chunk
@@ -134,9 +148,7 @@ def _detached_chunk(text: str, vector: list[float] | None = None, model: str | N
     )
     chunk.id = f"chunk-{next(_detached_ids)}"
     if vector is not None:
-        chunk.embedding_json = json.dumps(vector)
-        chunk.embedding_model = model
-        chunk.embedding_dim = len(vector)
+        _store_vector(chunk, vector, model)
     return chunk
 
 
@@ -341,46 +353,185 @@ class TestCosine:
     A cosine is a confident, well-behaved-looking float in [-1, 1]. Computing one from
     mismatched or corrupt data does not raise and does not look wrong — it ranks a random
     passage first and the answer is then written from it, with a citation.
+
+    `_cosine` takes decoded numbers rather than a chunk, so the malformed-*storage* cases
+    (unparseable JSON, a JSON object, non-numeric elements, a truncated blob) live with the
+    decoder in `test_vectors.py`. What is asserted here is that whatever the decoder hands
+    back, the arithmetic cannot produce a number that ranks. `TestStoredVectors` below
+    closes the loop on the two halves meeting.
     """
 
     def test_a_matching_vector_scores_its_similarity(self):
-        # The baseline the MIN_SEMANTIC_SIMILARITY floor is calibrated against.
-        chunk = _detached_chunk("motorcycle service", vector=_vector(0.9))
-        assert _cosine(QUERY_VECTOR, 1.0, chunk) == pytest.approx(0.9)
+        # The baseline the per-model similarity floors are calibrated against.
+        chunk_vector = _vector(0.9)
+        assert _cosine(QUERY_VECTOR, 1.0, chunk_vector, 1.0) == pytest.approx(0.9)
 
     def test_a_dimension_mismatch_scores_zero_rather_than_a_plausible_number(self):
         """Two models with the same name in different generations produce different
         dimensions. Scoring the overlap would rank on a prefix of a vector."""
-        chunk = _detached_chunk("motorcycle service", vector=[1.0, 0.0])
-        assert _cosine(QUERY_VECTOR, 1.0, chunk) == 0.0
-
-    def test_malformed_json_scores_zero(self):
-        chunk = _detached_chunk("motorcycle service")
-        chunk.embedding_json = "not-json"
-        assert _cosine(QUERY_VECTOR, 1.0, chunk) == 0.0
-
-    def test_a_chunk_with_no_embedding_scores_zero(self):
-        # The overwhelmingly common case: an unembedded chunk in a partially embedded base.
-        chunk = _detached_chunk("motorcycle service")
-        assert chunk.embedding_json is None
-        assert _cosine(QUERY_VECTOR, 1.0, chunk) == 0.0
-
-    def test_a_json_object_instead_of_a_list_scores_zero(self):
-        chunk = _detached_chunk("motorcycle service")
-        chunk.embedding_json = json.dumps({"vector": [1.0, 0.0, 0.0]})
-        assert _cosine(QUERY_VECTOR, 1.0, chunk) == 0.0
+        assert _cosine(QUERY_VECTOR, 1.0, [1.0, 0.0], 1.0) == 0.0
 
     def test_a_zero_magnitude_vector_scores_zero_instead_of_dividing_by_zero(self):
         """A provider that returns an all-zero vector for an empty or unsupported passage
         would otherwise raise ZeroDivisionError mid-retrieval — an unhandled 500 on a chat
         request, since there is no global exception handler."""
-        chunk = _detached_chunk("motorcycle service", vector=[0.0, 0.0, 0.0])
-        assert _cosine(QUERY_VECTOR, 1.0, chunk) == 0.0
+        assert _cosine(QUERY_VECTOR, 1.0, [0.0, 0.0, 0.0], 0.0) == 0.0
 
-    def test_non_numeric_values_score_zero(self):
-        chunk = _detached_chunk("motorcycle service")
-        chunk.embedding_json = json.dumps(["a", "b", "c"])
-        assert _cosine(QUERY_VECTOR, 1.0, chunk) == 0.0
+    def test_a_zero_magnitude_question_scores_zero(self):
+        assert _cosine([0.0, 0.0, 0.0], 0.0, _vector(0.9), 1.0) == 0.0
+
+    @pytest.mark.parametrize("poison", [float("nan"), float("inf"), float("-inf")])
+    def test_a_non_finite_result_scores_zero(self, poison):
+        """A corrupted blob can still decode to the right number of floats — the bytes are
+        just bytes. NaN compares False against every threshold in `rag/service.py` except
+        `!=`, so it would pass some gates and fail others rather than being excluded."""
+        assert _cosine(QUERY_VECTOR, 1.0, [poison, 0.0, 0.0], 1.0) == 0.0
+
+    def test_a_stored_norm_is_used_rather_than_recomputed(self):
+        """The norm is a stored column, so this is the one input `_cosine` cannot verify.
+        Passing a deliberately wrong one must change the answer — if it did not, the column
+        would be decorative and the ingest-time computation pointless."""
+        chunk_vector = _vector(0.9)
+        assert _cosine(QUERY_VECTOR, 1.0, chunk_vector, 2.0) == pytest.approx(0.45)
+
+
+class TestStoredVectors:
+    """`_stored_vectors` — the keyed read that replaced reading the column off the chunk."""
+
+    def test_it_reads_a_vector_written_in_the_binary_format(self, db, monkeypatch):
+        resource = _resource(db)
+        file_row = _file(db, resource, "manual.txt", provider="openai", model=MODEL)
+        near = _chunk(db, resource, file_row, "motorcycle service", 0, _vector(0.95))
+        _stub_embed(monkeypatch)
+
+        semantic = _semantic_retrieval(db, OWNER, resource.id, "bike servicing", [near])
+
+        assert [result.chunk.id for result in semantic.results] == [near.id]
+        assert semantic.top_similarity == pytest.approx(0.95, abs=1e-5)
+
+    def test_a_legacy_json_row_still_answers_with_no_backfill(self, db, monkeypatch):
+        """The compatibility guarantee. Every chunk embedded before the format change holds
+        JSON and no blob, and must keep participating exactly as it did — the migration
+        backfills for speed, never for correctness."""
+        resource = _resource(db)
+        file_row = _file(db, resource, "manual.txt", provider="openai", model=MODEL)
+        legacy = _chunk(db, resource, file_row, "motorcycle service", 0)
+        legacy.embedding_json = json.dumps(_vector(0.8))
+        legacy.embedding_model = MODEL
+        legacy.embedding_dim = 3
+        legacy.embedding_vector = None
+        legacy.embedding_norm = None
+        db.flush()
+        _stub_embed(monkeypatch)
+
+        semantic = _semantic_retrieval(db, OWNER, resource.id, "bike servicing", [legacy])
+
+        assert [result.chunk.id for result in semantic.results] == [legacy.id]
+        assert semantic.top_similarity == pytest.approx(0.8, abs=1e-6)
+
+    def test_both_formats_rank_together_in_one_base(self, db, monkeypatch):
+        """A partially backfilled table is a real state — the migration converts in batches
+        and can be interrupted. Rows in the two formats must be directly comparable, which
+        they are only because the conversion preserves the numbers."""
+        resource = _resource(db)
+        file_row = _file(db, resource, "manual.txt", provider="openai", model=MODEL)
+        packed = _chunk(db, resource, file_row, "motorcycle service", 0, _vector(0.9))
+        legacy = _chunk(db, resource, file_row, "engine oil", 1)
+        legacy.embedding_json = json.dumps(_vector(0.95))
+        legacy.embedding_model = MODEL
+        legacy.embedding_dim = 3
+        legacy.embedding_vector = None
+        db.flush()
+        _stub_embed(monkeypatch)
+
+        semantic = _semantic_retrieval(db, OWNER, resource.id, "bike servicing", [packed, legacy])
+
+        assert [result.chunk.id for result in semantic.results] == [legacy.id, packed.id]
+
+    def test_a_corrupt_blob_is_dropped_rather_than_raised(self, db, monkeypatch):
+        """This runs inside a chat request and the app has no global exception handler, so
+        an unreadable row costs its own contribution and nothing else."""
+        resource = _resource(db)
+        file_row = _file(db, resource, "manual.txt", provider="openai", model=MODEL)
+        good = _chunk(db, resource, file_row, "motorcycle service", 0, _vector(0.9))
+        broken = _chunk(db, resource, file_row, "engine oil", 1, _vector(0.95))
+        broken.embedding_vector = b"\x01\x02\x03"  # not a whole number of float32 values
+        broken.embedding_json = None
+        db.flush()
+        _stub_embed(monkeypatch)
+
+        semantic = _semantic_retrieval(db, OWNER, resource.id, "bike servicing", [good, broken])
+
+        assert [result.chunk.id for result in semantic.results] == [good.id]
+
+    def test_the_vector_columns_are_not_loaded_by_the_retrieval_query(self, db):
+        """The reason the keyed read exists at all.
+
+        Retrieval loads every chunk of the resource, and a vector is ~3 KB per row. Before
+        the deferral that came back on every question — including on a lexical-only base
+        where nothing would ever look at it. `unloaded` is SQLAlchemy's own record of which
+        attributes the SELECT did not fetch.
+        """
+        resource = _resource(db)
+        file_row = _file(db, resource, "manual.txt", provider="openai", model=MODEL)
+        _chunk(db, resource, file_row, "motorcycle service", 0, _vector(0.9))
+        resource_id = resource.id
+        db.commit()
+        db.expunge_all()  # a fresh load, not the instances already in the identity map
+
+        loaded = (
+            db.query(DocumentChunk)
+            .options(*rag_service._DEFER_VECTORS)
+            .filter(DocumentChunk.resource_id == resource_id)
+            .all()
+        )
+
+        assert {"embedding_vector", "embedding_json"} <= sqlalchemy_inspect(loaded[0]).unloaded
+        # The columns retrieval actually scores with are still eagerly present, or the
+        # deferral would have traded one round trip for one per chunk.
+        assert "terms_json" not in sqlalchemy_inspect(loaded[0]).unloaded
+        assert "contextual_content" not in sqlalchemy_inspect(loaded[0]).unloaded
+
+    def test_one_query_regardless_of_how_many_chunks_carry_vectors(self, db, monkeypatch):
+        """The keyed read must stay a single statement. Reading the vector off each chunk
+        object instead would be an N+1 against deferred columns — the exact failure the
+        deferral would otherwise introduce."""
+        resource = _resource(db)
+        file_row = _file(db, resource, "manual.txt", provider="openai", model=MODEL)
+        chunks = [
+            _chunk(db, resource, file_row, f"passage {index}", index, _vector(0.5 + index / 100))
+            for index in range(12)
+        ]
+        resource_id = resource.id
+        db.commit()
+        db.expunge_all()
+        reloaded = (
+            db.query(DocumentChunk)
+            .options(*rag_service._DEFER_VECTORS)
+            .filter(DocumentChunk.resource_id == resource_id)
+            .order_by(DocumentChunk.chunk_index)
+            .all()
+        )
+        _stub_embed(monkeypatch)
+
+        statements: list[str] = []
+
+        def record(conn, cursor, statement, *rest):
+            statements.append(statement)
+
+        event.listen(db.get_bind(), "before_cursor_execute", record)
+        try:
+            semantic = _semantic_retrieval(db, OWNER, resource_id, "bike servicing", reloaded)
+        finally:
+            event.remove(db.get_bind(), "before_cursor_execute", record)
+
+        # Every chunk was scored; the returned list is capped at SEMANTIC_CANDIDATES, which
+        # is also why the count below cannot be a per-result read either.
+        assert len(chunks) > SEMANTIC_CANDIDATES
+        assert len(semantic.results) == SEMANTIC_CANDIDATES
+        selects = [text for text in statements if text.lstrip().upper().startswith("SELECT")]
+        # One to pick the dominant model, one to read its vectors. Not one per chunk.
+        assert len(selects) == 2, selects
 
 
 class TestSemanticRetrieval:

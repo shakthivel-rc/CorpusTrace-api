@@ -23,6 +23,7 @@ import time
 
 import jwt
 import pytest
+from sqlalchemy import or_
 
 import rag.jobs as jobs
 import rag.service as rag_service
@@ -568,7 +569,12 @@ class TestEmbeddingsAreOptIn:
             db.query(DocumentChunk)
             .filter(
                 DocumentChunk.resource_id == resource_id,
-                DocumentChunk.embedding_json.isnot(None),
+                # Both formats, so this keeps meaning "no vector" rather than "no vector in
+                # whichever column ingestion happened to be writing when it was written".
+                or_(
+                    DocumentChunk.embedding_vector.isnot(None),
+                    DocumentChunk.embedding_json.isnot(None),
+                ),
             )
             .count()
             == 0
@@ -622,11 +628,17 @@ class TestEmbeddingsAreOptIn:
         jobs.run_job(db, jobs.claim_next_job(db))
 
         assert sum(calls) > 0
+        # Asserted against `embedding_vector` specifically, not against "either column is
+        # populated": this is the test that pins which format ingestion writes today. The
+        # legacy JSON column must stay empty on a fresh write, or every new row would be
+        # carrying a second copy of the vector that nothing reads.
         embedded = (
             db.query(DocumentChunk)
             .filter(
                 DocumentChunk.resource_id == resource_id,
-                DocumentChunk.embedding_json.isnot(None),
+                DocumentChunk.embedding_vector.isnot(None),
+                DocumentChunk.embedding_json.is_(None),
+                DocumentChunk.embedding_norm.isnot(None),
             )
             .count()
         )
