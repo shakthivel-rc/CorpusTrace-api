@@ -64,7 +64,7 @@ class TestNoRawProvenanceFooter:
     """Invariant 24, stated at full strength: the answer body is verbatim answer text.
 
     Provider, model, source name, chunk index, modality and score all reach the client as
-    structured fields on `citations` (the X-Nexarag-Citations header and citations_json),
+    structured fields on `citations` (the X-CorpusTrace-Citations header and citations_json),
     where the UI renders them as a provenance panel. None of them may be printed into the
     prose, in either the synthesized or the extractive path.
     """

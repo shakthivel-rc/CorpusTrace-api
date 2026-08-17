@@ -1,6 +1,6 @@
-# Third-party notices — Nexarag-api
+# Third-party notices — CorpusTrace API
 
-NexaRAG API is licensed under Apache-2.0 (see [LICENSE](LICENSE)).
+CorpusTrace API is licensed under Apache-2.0 (see [LICENSE](LICENSE)).
 
 **This repository redistributes no third-party code.** Dependencies are pinned in
 `requirements.txt` and resolved from PyPI at install time; none is vendored into
@@ -77,7 +77,7 @@ bind the **operator**, not this codebase:
 - The **Gemma Prohibited Use Policy** binds *use* (Terms §3.2), and is an external
   document Google may change without notice.
 - **"Distribution"** is defined to include making Gemma's functionality available
-  as a hosted service. Running NexaRAG against your own documents redistributes
+  as a hosted service. Running CorpusTrace against your own documents redistributes
   nothing. Running it as a multi-tenant service that embeds other people's uploads
   is a question for a lawyer.
 

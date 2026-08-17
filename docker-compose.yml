@@ -4,8 +4,8 @@
 # and makes sure the SPA repo is present. Running `docker compose up` directly works too,
 # once those two things are true.
 #
-# NOTE ON THE SPA BUILD CONTEXT. Nexarag-app is a separate repository, so this file builds
-# it from a sibling directory (`../Nexarag-app`). That is unusual, and it is a consequence
+# NOTE ON THE SPA BUILD CONTEXT. The CorpusTrace app is a separate repository, so this file builds
+# it from a sibling directory (`../CorpusTrace-app`). That is unusual, and it is a consequence
 # of the project living in two repos with no parent: something has to own the compose file,
 # and the API is the half that owns the database and the migrations. The bootstrap script
 # clones the sibling if it is missing. If you would rather not build the SPA at all, run
@@ -16,7 +16,7 @@
 # because bootstrap.sh needs one escape hatch: a db-data volume whose password this
 # checkout no longer knows cannot be recovered, and building a second stack beside it is
 # the only repair that does not delete somebody's data. See scripts/lib/run_docker.sh.
-name: ${COMPOSE_PROJECT_NAME:-nexarag}
+name: ${COMPOSE_PROJECT_NAME:-corpustrace}
 
 services:
   db:
@@ -26,8 +26,8 @@ services:
     image: ${MYSQL_IMAGE:-mysql:8.0}
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-nexarag}
-      MYSQL_USER: ${MYSQL_USER:-nexarag}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-corpustrace}
+      MYSQL_USER: ${MYSQL_USER:-corpustrace}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
     # utf8mb4 all the way down: document text and user names are not ASCII, and MySQL's
@@ -60,7 +60,7 @@ services:
     environment:
       # PyMySQL rather than mysqlclient for the URL: both are installed, and the pure-Python
       # driver removes one moving part from the container's startup path.
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-nexarag}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-nexarag}
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-corpustrace}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-corpustrace}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env — bootstrap.sh generates one}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -90,7 +90,7 @@ services:
 
   app:
     build:
-      context: ../Nexarag-app
+      context: ../CorpusTrace-app
     restart: unless-stopped
     depends_on:
       api:

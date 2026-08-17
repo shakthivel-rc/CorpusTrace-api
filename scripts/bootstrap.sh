@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# One command to go from a fresh clone to a running NexaRAG, on Linux, macOS or Windows.
+# One command to go from a fresh clone to a running CorpusTrace, on Linux, macOS or Windows.
 #
 #   ./scripts/bootstrap.sh              # use Docker if it can, fall back to native if not
 #   ./scripts/bootstrap.sh --docker     # Docker only; fail rather than fall back
@@ -29,13 +29,13 @@
 # genuinely unrecoverable case, a database volume whose password this checkout no longer
 # knows, is resolved by building a *second* stack beside it and leaving the first intact.
 #
-# Every repair is announced with a → and the exact command. NEXARAG_AUTO_INSTALL=0 turns
+# Every repair is announced with a → and the exact command. CORPUSTRACE_AUTO_INSTALL=0 turns
 # installation off and leaves the diagnosis.
 set -euo pipefail
 
 API_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_DIR="$(cd "$API_DIR/.." && pwd)/Nexarag-app"
-APP_REPO="${NEXARAG_APP_REPO:-https://github.com/SHAKTHI-HACKER/Nexarag-app.git}"
+APP_DIR="$(cd "$API_DIR/.." && pwd)/CorpusTrace-app"
+APP_REPO="${CORPUSTRACE_APP_REPO:-https://github.com/SHAKTHI-HACKER/CorpusTrace-app.git}"
 ENV_FILE="$API_DIR/.env"
 
 # shellcheck source=lib/common.sh
@@ -55,8 +55,8 @@ while [ "$#" -gt 0 ]; do
         --native) MODE="native" ;;
         --docker) MODE="docker" ;;
         --check|--doctor) CHECK_ONLY=1; NX_DRY_RUN=1; export NX_DRY_RUN ;;
-        --yes|-y) NEXARAG_ASSUME_YES=1; export NEXARAG_ASSUME_YES ;;
-        --no-install) NEXARAG_AUTO_INSTALL=0; export NEXARAG_AUTO_INSTALL ;;
+        --yes|-y) CORPUSTRACE_ASSUME_YES=1; export CORPUSTRACE_ASSUME_YES ;;
+        --no-install) CORPUSTRACE_AUTO_INSTALL=0; export CORPUSTRACE_AUTO_INSTALL ;;
         --help|-h) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) nx_die "unknown option: $1 (try --help)" ;;
     esac
@@ -135,7 +135,7 @@ nx_summary() {
     printf '\n' >&2
     # Matches DEFAULT_SUPERADMIN_EMAIL in seeders/user_seeder.py. Overridable with
     # SUPERADMIN_EMAIL; this line names the default because that is what a fresh setup gets.
-    nx_info "Sign in as  superadmin@nexarag.local  with the SUPERADMIN_PASSWORD value in .env:"
+    nx_info "Sign in as  superadmin@corpustrace.local  with the SUPERADMIN_PASSWORD value in .env:"
     nx_info "  grep '^SUPERADMIN_PASSWORD=' .env"
     printf '\n' >&2
     if [ -n "$native" ]; then
@@ -145,13 +145,13 @@ nx_summary() {
     fi
 }
 
-nx_bold "NexaRAG setup"
+nx_bold "CorpusTrace setup"
 nx_dim "$(nx_os)/$(nx_arch) · package manager: $(nx_pkg_manager) · bash ${BASH_VERSION%%(*}"
 
 # =========================================================================================
 nx_step "1. The other half of the project"
 
-# `package.json`, not the directory. An empty or half-cloned Nexarag-app is a directory
+# `package.json`, not the directory. An empty or half-cloned app checkout is a directory
 # that exists, and treating that as "present" pushed the failure four steps down the
 # script, where it arrived as `npm ci` failing on a folder with nothing in it — three
 # fallbacks deep, with an error about dependencies rather than about a missing repository.
@@ -167,7 +167,7 @@ elif [ "$CHECK_ONLY" = "1" ]; then
 else
     nx_ensure_command git git || nx_die "git is required to fetch the SPA and could not be installed.
        Install git, or clone $APP_REPO to $APP_DIR yourself, then re-run."
-    nx_info "Nexarag-app is a separate repository; cloning it beside this one"
+    nx_info "The CorpusTrace app is a separate repository; cloning it beside this one"
     # Retried because a clone is the one step here that is pure network, and the failure is
     # almost always a proxy or a flaky DNS answer rather than a wrong URL.
     nx_retry 3 git clone --depth 1 "$APP_REPO" "$APP_DIR" \
@@ -221,7 +221,7 @@ if [ "$CHECK_ONLY" = "0" ]; then
 fi
 
 PROJECT="$(nx_env_get COMPOSE_PROJECT_NAME "$ENV_FILE")"
-[ -n "$PROJECT" ] || PROJECT="nexarag"
+[ -n "$PROJECT" ] || PROJECT="corpustrace"
 
 # =========================================================================================
 nx_step "3. Toolchain"
@@ -271,8 +271,8 @@ else
     if [ -z "$(nx_env_get MYSQL_PASSWORD "$ENV_FILE")" ]; then
         nx_recover_db_credentials "$PROJECT" "$ENV_FILE" || true
     fi
-    nx_env_ensure MYSQL_DATABASE      "nexarag"              "$ENV_FILE"
-    nx_env_ensure MYSQL_USER          "nexarag"              "$ENV_FILE"
+    nx_env_ensure MYSQL_DATABASE      "corpustrace"              "$ENV_FILE"
+    nx_env_ensure MYSQL_USER          "corpustrace"              "$ENV_FILE"
     nx_env_ensure MYSQL_PASSWORD      "$(generate_password)" "$ENV_FILE"
     nx_env_ensure MYSQL_ROOT_PASSWORD "$(generate_password)" "$ENV_FILE"
     nx_ok "database credentials present"

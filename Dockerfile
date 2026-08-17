@@ -1,4 +1,4 @@
-# NexaRAG API image.
+# CorpusTrace API image.
 #
 # Two stages because `mysqlclient` is a C extension: it needs a compiler and the MySQL
 # client headers to build, and neither is worth carrying into the running image. The
@@ -49,9 +49,9 @@ COPY . .
 RUN mkdir -p /app/uploads/rag
 
 # Runs as a non-root user; the uploads directory is the only path the app writes to.
-RUN useradd --create-home --uid 10001 nexarag \
-    && chown -R nexarag:nexarag /app/uploads
-USER nexarag
+RUN useradd --create-home --uid 10001 corpustrace \
+    && chown -R corpustrace:corpustrace /app/uploads
+USER corpustrace
 
 EXPOSE 8000
 

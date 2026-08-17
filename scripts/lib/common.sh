@@ -55,10 +55,10 @@ nx_have() { command -v "$1" >/dev/null 2>&1; }
 
 # Ask, but never block a pipeline. With no terminal there is nobody to answer, and a setup
 # script that hangs forever waiting on stdin inside CI is worse than one that decides.
-# NEXARAG_ASSUME_YES=1 (or --yes) is the explicit "decide for me" switch.
+# CORPUSTRACE_ASSUME_YES=1 (or --yes) is the explicit "decide for me" switch.
 nx_confirm() {
     local prompt="$1" answer=""
-    if [ "${NEXARAG_ASSUME_YES:-0}" = "1" ] || [ ! -t 0 ]; then
+    if [ "${CORPUSTRACE_ASSUME_YES:-0}" = "1" ] || [ ! -t 0 ]; then
         nx_dim "$prompt — assuming yes"
         return 0
     fi

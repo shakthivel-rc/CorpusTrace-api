@@ -1,1 +1,1 @@
-"""Core application utilities for NexaRAG API."""
+"""Core application utilities for CorpusTrace API."""

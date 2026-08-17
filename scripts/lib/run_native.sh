@@ -95,7 +95,7 @@ nx_native_pip() {
     nx_warn "mysqlclient still will not build"
     nx_fix "installing without it — PyMySQL is also pinned, and is the driver every DATABASE_URL here uses"
 
-    filtered="$(mktemp "${TMPDIR:-/tmp}/nexarag-req.XXXXXX")"
+    filtered="$(mktemp "${TMPDIR:-/tmp}/corpustrace-req.XXXXXX")"
     grep -v -i '^mysqlclient' "$API_DIR/requirements.txt" > "$filtered"
     # shellcheck disable=SC2086
     $NX_VENV_PIP install --quiet -r "$filtered" -r "$API_DIR/requirements-dev.txt" || {
@@ -216,7 +216,7 @@ nx_database_via_package() {
     # Written to a mode-600 file rather than passed with -e: anything on a command line is
     # readable by every process on the machine through `ps`, and this line contains the
     # database password.
-    sql="$(mktemp "${TMPDIR:-/tmp}/nexarag-sql.XXXXXX")"
+    sql="$(mktemp "${TMPDIR:-/tmp}/corpustrace-sql.XXXXXX")"
     chmod 600 "$sql"
     {
         printf 'CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n' \

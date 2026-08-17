@@ -372,7 +372,7 @@ class TestCitationHeaderOnAnswers:
         resp = self._ask(client, token, resource.id)
 
         assert resp.status_code == 200
-        decoded = json.loads(base64.urlsafe_b64decode(resp.headers["x-nexarag-citations"]))
+        decoded = json.loads(base64.urlsafe_b64decode(resp.headers["x-corpustrace-citations"]))
         assert decoded[0]["chunk_id"] == chunk.id
         assert decoded[0]["file_id"] == file_record.id
         assert decoded[0]["page_start"] == 4
@@ -384,7 +384,7 @@ class TestCitationHeaderOnAnswers:
 
         resp = self._ask(client, token, resource.id)
 
-        decoded = json.loads(base64.urlsafe_b64decode(resp.headers["x-nexarag-citations"]))
+        decoded = json.loads(base64.urlsafe_b64decode(resp.headers["x-corpustrace-citations"]))
         # `_compose_answer` prints "[1]" for the first source; a chip labelled differently
         # would point the reader at the wrong line of the answer.
         assert f"[{decoded[0]['index']}]" in resp.text
@@ -396,7 +396,7 @@ class TestCitationHeaderOnAnswers:
         resp = self._ask(client, token, resource.id, query="hello there")
 
         assert resp.status_code == 200
-        assert "x-nexarag-citations" not in resp.headers
+        assert "x-corpustrace-citations" not in resp.headers
 
     def test_the_turn_is_persisted_with_its_citations(self, client, db, upload_dir):
         token = _seed_ai_user(db)

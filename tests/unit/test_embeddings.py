@@ -427,7 +427,7 @@ class TestEmbeddingCatalogue:
 
 
 class _RecordingHandler(logging.Handler):
-    """Captures records off the `nexarag.llm` logger directly.
+    """Captures records off the `corpustrace.llm` logger directly.
 
     Attached to the logger rather than relying on caplog because `configure_logging()`
     clears the root handlers at import time — and because rendering each record through
@@ -445,7 +445,7 @@ class _RecordingHandler(logging.Handler):
 
 @pytest.fixture()
 def llm_log():
-    logger = logging.getLogger("nexarag.llm")
+    logger = logging.getLogger("corpustrace.llm")
     handler = _RecordingHandler()
     previous_level = logger.level
     logger.setLevel(logging.DEBUG)

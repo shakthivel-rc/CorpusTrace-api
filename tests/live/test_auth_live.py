@@ -227,7 +227,7 @@ def test_an_unknown_username_is_rejected_without_revealing_whether_it_exists(
     Uses a random address so it can never collide with a real account, on this stack or on a
     developer's.
     """
-    unknown = f"no-such-user-{uuid.uuid4().hex[:12]}@nexarag.invalid"
+    unknown = f"no-such-user-{uuid.uuid4().hex[:12]}@corpustrace.invalid"
     response = _login(client, WRONG_PASSWORD, username=unknown)
 
     assert response.status_code == 401

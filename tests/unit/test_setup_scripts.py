@@ -177,9 +177,9 @@ class TestPortRetargeting:
         assert env.read_text().strip() == "X=http://h:80800/a"
 
     def test_a_value_that_does_not_name_the_port_is_untouched(self, tmp_path):
-        env = write_env(tmp_path, "APP_BASE_URL=https://nexarag.example.com\n")
+        env = write_env(tmp_path, "APP_BASE_URL=https://corpustrace.example.com\n")
         run(f'nx_env_retarget_port APP_BASE_URL 8080 8081 "{env}"')
-        assert env.read_text().strip() == "APP_BASE_URL=https://nexarag.example.com"
+        assert env.read_text().strip() == "APP_BASE_URL=https://corpustrace.example.com"
 
 
 @no_bash
@@ -292,11 +292,11 @@ class TestLineEndings:
     this repository, appearing only on Windows, against an image that built perfectly.
     """
 
-    @pytest.mark.parametrize("repo", ["Nexarag-api", "Nexarag-app"])
+    @pytest.mark.parametrize("repo", ["CorpusTrace-api", "CorpusTrace-app"])
     def test_shell_scripts_are_pinned_to_lf(self, repo):
-        attributes = API_DIR.parent / repo / ".gitattributes"
-        if repo == "Nexarag-app" and not attributes.exists():
-            pytest.skip("Nexarag-app is not checked out beside this repository")
+        attributes = (API_DIR if repo == "CorpusTrace-api" else API_DIR.parent / repo) / ".gitattributes"
+        if repo == "CorpusTrace-app" and not attributes.exists():
+            pytest.skip("CorpusTrace-app is not checked out beside this repository")
         assert attributes.exists(), f"{repo}/.gitattributes is missing"
         text = attributes.read_text()
         assert "*.sh" in text and "eol=lf" in text

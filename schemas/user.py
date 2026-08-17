@@ -83,7 +83,7 @@ class UserProfileResponse(BaseModel):
     # accepted becomes an uncaught ValidationError on the way *out* — and with no global
     # exception handler that is a bare HTTP 500. The seeded superadmin tripped exactly this:
     # email-validator rejects the special-use TLDs .local, .localhost, .test and .invalid
-    # (RFC 6761/6762), so superadmin@nexarag.local could sign in — login takes a plain str —
+    # (RFC 6761/6762), so superadmin@corpustrace.local could sign in — login takes a plain str —
     # and then got a 500 from GET /users/profile every time.
     #
     # Validation belongs on the way in, where a bad address can still be refused with a 422

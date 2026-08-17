@@ -46,7 +46,7 @@ from services.llm_provider import LlmProviderError
 from services.user import get_user_by_id
 
 
-logger = logging.getLogger("nexarag.chat")
+logger = logging.getLogger("corpustrace.chat")
 
 # The one slug that gates chat, matching `Depends(check_permissions(["ai_access"]))` on
 # every sibling HTTP route.

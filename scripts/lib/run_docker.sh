@@ -63,8 +63,8 @@ nx_choose_mysql_image() {
 # again leaves it behind — and the new .env then carries a password the database has never
 # heard of.
 #
-# Left to itself that surfaces ~90 seconds later as "container nexarag-api-1 is unhealthy",
-# with the real reason (1045, "Access denied for user 'nexarag'") buried in the API's log
+# Left to itself that surfaces ~90 seconds later as "container corpustrace-api-1 is unhealthy",
+# with the real reason (1045, "Access denied for user 'corpustrace'") buried in the API's log
 # behind a SQLAlchemy traceback. Everything the operator can see says the *database* is
 # healthy, because it is: it just does not have this password.
 #
@@ -92,7 +92,7 @@ nx_resolve_volume_conflict() {
     nx_info "  reporting itself perfectly healthy."
 
     while [ "$suffix" -lt 50 ]; do
-        candidate="nexarag-${suffix}"
+        candidate="corpustrace-${suffix}"
         $NX_DOCKER volume inspect "${candidate}_db-data" >/dev/null 2>&1 || break
         suffix=$((suffix + 1))
     done
@@ -135,7 +135,7 @@ nx_run_docker() {
     nx_step "6. Building and starting"
     nx_info "first run pulls MySQL and builds two images; expect a few minutes"
 
-    log="$(mktemp "${TMPDIR:-/tmp}/nexarag-compose.XXXXXX")"
+    log="$(mktemp "${TMPDIR:-/tmp}/corpustrace-compose.XXXXXX")"
     while :; do
         if nx_compose_up "$log"; then
             break

@@ -8,7 +8,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
-logger = logging.getLogger("nexarag.request")
+logger = logging.getLogger("corpustrace.request")
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):

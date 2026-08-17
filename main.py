@@ -23,8 +23,8 @@ from services.llm_provider import refresh_due_model_catalogs
 
 settings = get_settings()
 configure_logging(settings.log_level)
-logger = logging.getLogger("nexarag.llm_catalog")
-ingestion_logger = logging.getLogger("nexarag.ingestion")
+logger = logging.getLogger("corpustrace.llm_catalog")
+ingestion_logger = logging.getLogger("corpustrace.ingestion")
 
 app = FastAPI(
     title=settings.app_name,
@@ -41,10 +41,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     # A cross-origin response's headers are invisible to JS unless they are exposed here.
-    # /chat/asks returns its retrieval provenance on X-Nexarag-Citations, so without this
+    # /chat/asks returns its retrieval provenance on X-CorpusTrace-Citations, so without this
     # the SPA reads null for it in every deployment where the API is on another origin —
     # and works fine behind the dev proxy, which is the worst way for it to fail.
-    expose_headers=["X-Nexarag-Citations"],
+    expose_headers=["X-CorpusTrace-Citations"],
 )
 
 app.add_middleware(JWTAuthMiddleware)
@@ -140,4 +140,4 @@ async def _document_ingestion_worker_loop():
 
 @app.get("/")
 def read_root():
-    return {"message": "NexaRAG API"}
+    return {"message": "CorpusTrace API"}

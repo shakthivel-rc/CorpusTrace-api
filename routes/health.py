@@ -11,13 +11,13 @@ router = APIRouter(prefix="/api/v1/health", tags=["Health"])
 
 @router.get("/live")
 def live():
-    return SuccessResponse(status_code=200, message="NexaRAG API is live", data={"status": "live"})
+    return SuccessResponse(status_code=200, message="CorpusTrace API is live", data={"status": "live"})
 
 
 @router.get("/ready")
 def ready(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))
-    return SuccessResponse(status_code=200, message="NexaRAG API is ready", data={"database": "ok"})
+    return SuccessResponse(status_code=200, message="CorpusTrace API is ready", data={"database": "ok"})
 
 
 @router.get("/dependencies")

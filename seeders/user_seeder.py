@@ -28,8 +28,8 @@ load_dotenv()
 # rename an account that is already in the database — it creates a second one. If you seeded
 # before this changed, either set SUPERADMIN_EMAIL to the address you already have, or update
 # the existing row.
-DEFAULT_SUPERADMIN_EMAIL = "superadmin@nexarag.local"
-DEFAULT_CUSTOMER_EMAIL = "customer@nexarag.local"
+DEFAULT_SUPERADMIN_EMAIL = "superadmin@corpustrace.local"
+DEFAULT_CUSTOMER_EMAIL = "customer@corpustrace.local"
 
 
 def _get_or_create_role(session: Session, name: str) -> Role:
@@ -101,9 +101,9 @@ def seed_database():
                 id=str(uuid.uuid4()),
                 email=admin_email,
                 username=admin_email,
-                first_name="Nexa",
+                first_name="CorpusTrace",
                 last_name="Admin",
-                organization="NexaRAG",
+                organization="CorpusTrace",
                 department="dev",
                 password=pwd_context.hash(default_password),
                 status=1,
@@ -117,9 +117,9 @@ def seed_database():
                 id=str(uuid.uuid4()),
                 email=customer_email,
                 username=customer_email,
-                first_name="Nexa",
+                first_name="CorpusTrace",
                 last_name="Customer",
-                organization="NexaRAG",
+                organization="CorpusTrace",
                 department="HR",
                 password=pwd_context.hash(default_password),
                 status=1,

@@ -46,7 +46,7 @@ from services.llm_provider import (
 )
 
 
-logger = logging.getLogger("nexarag.rag")
+logger = logging.getLogger("corpustrace.rag")
 
 
 def _has_embedding():
@@ -324,7 +324,7 @@ def _conversational_reply(query: str, resource_name: str) -> str | None:
         return "Goodbye! Come back any time you need something from your documents."
     if normalized in CAPABILITY_QUESTIONS:
         return (
-            f'I am NexaRAG. I answer questions using only the documents you have uploaded into '
+            f'I am CorpusTrace. I answer questions using only the documents you have uploaded into '
             f'"{resource_name}", and I cite the exact source chunk for every claim so you can verify it. '
             "I do not answer from outside knowledge. Ask about a term, section or requirement to begin."
         )
@@ -1207,7 +1207,7 @@ def complete_answer(
         )
         # Verbatim model output, nothing appended. Provenance (source, chunk, modality,
         # score, page range) travels as structured data on `plan.citations` — the
-        # X-Nexarag-Citations header, the WebSocket `citations` frame and citations_json —
+        # X-CorpusTrace-Citations header, the WebSocket `citations` frame and citations_json —
         # and the client renders it as a panel. Re-printing the same fields as prose here
         # made the answer body its own duplicate footer, unstyled and unparseable.
         return llm_answer.strip()
@@ -1897,7 +1897,7 @@ def _term_counts(text: str) -> dict[str, int]:
 # Attribute holding the per-chunk scoring memo. Named, rather than inlined, because it is
 # an UNMAPPED attribute on a mapped class: SQLAlchemy walks its mapper's columns when it
 # flushes, not the instance `__dict__`, so a key it does not know about is inert.
-_SCORING_MEMO_ATTR = "_nexarag_scoring_memo"
+_SCORING_MEMO_ATTR = "_corpustrace_scoring_memo"
 
 
 class _ChunkScoringData:
@@ -2780,7 +2780,7 @@ def _llm_evidence(results: list[RetrievalResult]) -> list[dict]:
 # `_sources_block` was removed here. It printed "LLM: {provider}/{model}" and one
 # "[N] {source}, chunk {n}, modality={m}, score={s}" line per citation onto the end of
 # every synthesized answer — every one of those fields already rides back as structured
-# data on `_citations()` (the X-Nexarag-Citations header and citations_json), so the block
+# data on `_citations()` (the X-CorpusTrace-Citations header and citations_json), so the block
 # was pure duplication that rendered as unstyled prose inside the chat bubble. The client
 # renders the same information as a designed provenance panel. Do not reintroduce it: the
 # answer body is verbatim answer text.

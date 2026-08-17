@@ -15,7 +15,7 @@ def send_email(recipient_email: str, email_template: EmailTemplate):
     smtp_username = os.getenv("SMTP_USERNAME", "").strip()
     smtp_password = os.getenv("SMTP_PASSWORD", "").strip()
     from_email = os.getenv("SMTP_FROM_EMAIL", "").strip()
-    from_name = os.getenv("SMTP_FROM_NAME", "NexaRAG").strip()
+    from_name = os.getenv("SMTP_FROM_NAME", "CorpusTrace").strip()
     use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 
     if not smtp_host or not from_email:

@@ -69,7 +69,7 @@ from rag.service import (
 from services.activity_log import log_activity
 
 
-logger = logging.getLogger("nexarag.ingestion")
+logger = logging.getLogger("corpustrace.ingestion")
 
 # Identifies which process claimed a job. Two uvicorn workers poll the same table, so this
 # is what distinguishes "someone else is working on it" from "nobody is".

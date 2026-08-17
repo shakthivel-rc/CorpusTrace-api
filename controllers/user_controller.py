@@ -84,7 +84,7 @@ def add_user_controller(response: Response, user: UserSignupReqeust, db: Session
     add_roles_to_user(user, new_user, db)
     
     # setting up the email
-    email_template = EmailTemplate(subject="Welcome to NexaRAG - Your Account is Ready",body=login_email_template(user.first_name, verify_url))
+    email_template = EmailTemplate(subject="Welcome to CorpusTrace - Your Account is Ready",body=login_email_template(user.first_name, verify_url))
     # sending the email
     email_response = send_email(recipient_email=user.email,email_template=email_template)
     # throw error when email can be sent

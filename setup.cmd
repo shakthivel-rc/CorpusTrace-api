@@ -1,5 +1,5 @@
 @echo off
-REM NexaRAG setup for Windows. Double-click this, or run it from cmd.exe.
+REM CorpusTrace setup for Windows. Double-click this, or run it from cmd.exe.
 REM
 REM -ExecutionPolicy Bypass applies to this one process only and changes nothing about the
 REM machine's policy. Without it, the default RemoteSigned policy refuses to run a .ps1

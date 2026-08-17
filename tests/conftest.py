@@ -1,5 +1,5 @@
 """
-Shared pytest configuration and fixtures for Nexarag-api.
+Shared pytest configuration and fixtures for CorpusTrace API.
 
 CRITICAL ORDERING: environment variables are set at the very top, BEFORE importing any
 application module. core/config.py, db/session.py and utils/token.py all read os.environ

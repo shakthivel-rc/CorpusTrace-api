@@ -506,7 +506,7 @@ class TestSourcePassages:
     def test_a_citation_from_a_real_answer_resolves_back_to_its_passage(self, indexed_base):
         """The full round trip: ask, get citations off the response header, open one.
 
-        Citations ride on `X-Nexarag-Citations` rather than in the body precisely so the
+        Citations ride on `X-CorpusTrace-Citations` rather than in the body precisely so the
         streamed body stays verbatim answer text — which makes them the single most
         proxy-fragile part of the API. nginx re-writing or dropping a response header is
         invisible to every hermetic test and breaks the entire evidence view.
@@ -523,7 +523,7 @@ class TestSourcePassages:
         )
         assert response.status_code == 200, response.text[:400]
 
-        raw = response.headers.get("X-Nexarag-Citations")
+        raw = response.headers.get("X-CorpusTrace-Citations")
         assert raw, "an answer grounded in the uploaded document carried no citations header"
         citations = json.loads(base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)))
         assert citations, "the citations header decoded to nothing"

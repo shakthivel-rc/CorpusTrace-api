@@ -1,1 +1,1 @@
-"""RAG services for NexaRAG."""
+"""RAG services for CorpusTrace."""

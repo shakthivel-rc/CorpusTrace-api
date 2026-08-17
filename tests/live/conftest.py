@@ -16,9 +16,9 @@ None of those are reachable from SQLite and a mocked fetch. They live in the wir
 nginx, the container healthchecks, the /api prefix strip — so this suite talks to that wiring
 over HTTP exactly as a browser does.
 
-These tests are SKIPPED unless NEXARAG_LIVE_URL is set, so `pytest` stays hermetic by default:
+These tests are SKIPPED unless CORPUSTRACE_LIVE_URL is set, so `pytest` stays hermetic by default:
 
-    NEXARAG_LIVE_URL=http://localhost:8080 pytest -m live
+    CORPUSTRACE_LIVE_URL=http://localhost:8080 pytest -m live
 
 Point it at the SPA's origin, not the API's — that routes through nginx and therefore covers
 the proxy and its prefix strip. The API's own origin works too if you only want the backend.
@@ -30,7 +30,7 @@ import httpx
 import pytest
 
 # The seeder's default. Overridable for a stack seeded with a different account.
-SUPERADMIN_EMAIL = os.getenv("NEXARAG_LIVE_EMAIL", "superadmin@nexarag.local")
+SUPERADMIN_EMAIL = os.getenv("CORPUSTRACE_LIVE_EMAIL", "superadmin@corpustrace.local")
 
 
 def pytest_collection_modifyitems(items):
@@ -47,9 +47,9 @@ def pytest_collection_modifyitems(items):
 
 
 def _require_live_url() -> str:
-    url = os.getenv("NEXARAG_LIVE_URL", "").strip().rstrip("/")
+    url = os.getenv("CORPUSTRACE_LIVE_URL", "").strip().rstrip("/")
     if not url:
-        pytest.skip("set NEXARAG_LIVE_URL to run the live-stack suite")
+        pytest.skip("set CORPUSTRACE_LIVE_URL to run the live-stack suite")
     return url
 
 
@@ -74,7 +74,7 @@ def api_base(live_root: str) -> str:
             continue
         if probe.status_code == 200:
             return candidate
-    pytest.skip(f"no NexaRAG API reachable at {live_root}")
+    pytest.skip(f"no CorpusTrace API reachable at {live_root}")
 
 
 @pytest.fixture(scope="session")

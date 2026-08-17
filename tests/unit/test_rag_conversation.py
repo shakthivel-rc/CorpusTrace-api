@@ -62,7 +62,7 @@ class TestConversationalReply:
     @pytest.mark.parametrize("message", ["help", "what can you do", "who are you"])
     def test_capability_questions_explain_the_assistant(self, message):
         reply = _conversational_reply(message, "ISO")
-        assert "NexaRAG" in reply and "cite" in reply
+        assert "CorpusTrace" in reply and "cite" in reply
 
     @pytest.mark.parametrize(
         "message",

@@ -3,7 +3,7 @@ def login_email_template(first_name: str, verify_url: str):
         <html>
         <head>
         <meta charset="UTF-8">
-        <title>Welcome to NexaRAG</title>
+        <title>Welcome to CorpusTrace</title>
         </head>
         <body style="margin:0; padding:0; background-color:#f4f4f4;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#f4f4f4">
@@ -14,7 +14,7 @@ def login_email_template(first_name: str, verify_url: str):
                     <td align="left" style="font-size: 18px; line-height: 28px;">
                     <p style="margin: 0 0 20px;">Hi {first_name},</p>
                     <p style="margin: 0 0 20px;">
-                        Thank you for signing up with <strong>NexaRAG</strong>! We are excited to have you on board.
+                        Thank you for signing up with <strong>CorpusTrace</strong>! We are excited to have you on board.
                     </p>
                     <p style="margin: 0 0 20px;">
                         Your account has been successfully created.
@@ -24,7 +24,7 @@ def login_email_template(first_name: str, verify_url: str):
                     </p>
                     <p style="margin: 0;">
                         Welcome aboard!<br>
-                        The NexaRAG Team
+                        The CorpusTrace Team
                     </p>
                     </td>
                 </tr>
@@ -32,7 +32,7 @@ def login_email_template(first_name: str, verify_url: str):
                 <table cellpadding="0" cellspacing="0" border="0" width="600" style="margin-top:20px;">
                 <tr>
                     <td align="center" style="font-size:12px; color:#888888; font-family:Arial, sans-serif;">
-                    &copy; 2026 SHAKTHIVEL RAVICHANDRAN. NexaRAG is open source under the Apache License 2.0.
+                    &copy; 2026 SHAKTHIVEL RAVICHANDRAN. CorpusTrace is open source under the Apache License 2.0.
                     </td>
                 </tr>
                 </table>
@@ -49,7 +49,7 @@ def otp_email_template(first_name: str, otp_code: str):
         <html>
         <head>
         <meta charset="UTF-8">
-        <title>Your Verification Code - NexaRAG</title>
+        <title>Your Verification Code - CorpusTrace</title>
         </head>
         <body style="margin:0; padding:0; background-color:#f4f4f4;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#f4f4f4">
@@ -60,7 +60,7 @@ def otp_email_template(first_name: str, otp_code: str):
                     <td align="left" style="font-size: 18px; line-height: 28px;">
                     <p style="margin: 0 0 20px;">Hi {first_name},</p>
                     <p style="margin: 0 0 20px;">
-                        Thank you for registering with <strong>NexaRAG</strong>! To verify your email address, please use the following code:
+                        Thank you for registering with <strong>CorpusTrace</strong>! To verify your email address, please use the following code:
                     </p>
                     <p style="margin: 0 0 10px; text-align: center;">
                         <span style="display:inline-block; padding:16px 32px; background-color:#f0f4ff; border: 2px dashed #007BFF; border-radius:8px; font-size:32px; font-weight:bold; letter-spacing:8px; color:#007BFF;">{otp_code}</span>
@@ -69,11 +69,11 @@ def otp_email_template(first_name: str, otp_code: str):
                         This code will expire in <strong>10 minutes</strong>.
                     </p>
                     <p style="margin: 0 0 20px;">
-                        If you didn't create an account with NexaRAG, you can safely ignore this email.
+                        If you didn't create an account with CorpusTrace, you can safely ignore this email.
                     </p>
                     <p style="margin: 0;">
                         Welcome aboard!<br>
-                        The NexaRAG Team
+                        The CorpusTrace Team
                     </p>
                     </td>
                 </tr>
@@ -81,7 +81,7 @@ def otp_email_template(first_name: str, otp_code: str):
                 <table cellpadding="0" cellspacing="0" border="0" width="600" style="margin-top:20px;">
                 <tr>
                     <td align="center" style="font-size:12px; color:#888888; font-family:Arial, sans-serif;">
-                    &copy; 2026 SHAKTHIVEL RAVICHANDRAN. NexaRAG is open source under the Apache License 2.0.
+                    &copy; 2026 SHAKTHIVEL RAVICHANDRAN. CorpusTrace is open source under the Apache License 2.0.
                     </td>
                 </tr>
                 </table>
@@ -98,7 +98,7 @@ def reset_password_email_template(first_name: str, reset_url: str):
         <html>
         <head>
         <meta charset="UTF-8">
-        <title>Reset Your Password - NexaRAG</title>
+        <title>Reset Your Password - CorpusTrace</title>
         </head>
         <body style="margin:0; padding:0; background-color:#f4f4f4;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#f4f4f4">
@@ -109,7 +109,7 @@ def reset_password_email_template(first_name: str, reset_url: str):
                     <td align="left" style="font-size: 18px; line-height: 28px;">
                     <p style="margin: 0 0 20px;">Hi {first_name},</p>
                     <p style="margin: 0 0 20px;">
-                        We received a request to reset your password for your <strong>NexaRAG</strong> account.
+                        We received a request to reset your password for your <strong>CorpusTrace</strong> account.
                     </p>
                     <p style="margin: 0 0 20px;">
                         If you made this request, you can reset your password by clicking the button below:
@@ -126,7 +126,7 @@ def reset_password_email_template(first_name: str, reset_url: str):
                 <table cellpadding="0" cellspacing="0" border="0" width="600" style="margin-top:20px;">
                 <tr>
                     <td align="center" style="font-size:12px; color:#888888; font-family:Arial, sans-serif;">
-                    &copy; 2026 SHAKTHIVEL RAVICHANDRAN. NexaRAG is open source under the Apache License 2.0.
+                    &copy; 2026 SHAKTHIVEL RAVICHANDRAN. CorpusTrace is open source under the Apache License 2.0.
                     </td>
                 </tr>
                 </table>

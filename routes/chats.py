@@ -27,7 +27,7 @@ from sqlalchemy import text
 from db.session import get_db
 
 
-logger = logging.getLogger("nexarag.chat")
+logger = logging.getLogger("corpustrace.chat")
 
 
 router = APIRouter(

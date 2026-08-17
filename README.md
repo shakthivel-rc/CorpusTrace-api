@@ -1,10 +1,10 @@
-# Nexarag-api
+# CorpusTrace API
 
-FastAPI backend for **NexaRAG** — an authenticated service for uploading documents into a
+FastAPI backend for **CorpusTrace** — an authenticated service for uploading documents into a
 knowledge base and asking questions against them, plus a full identity and access-control
 console.
 
-Pairs with the [`Nexarag-app`](https://github.com/SHAKTHI-HACKER/Nexarag-app) React SPA.
+Pairs with the React SPA in the [`CorpusTrace-app`](https://github.com/SHAKTHI-HACKER/CorpusTrace-app) repository.
 
 ---
 
@@ -64,13 +64,13 @@ code, not merely forbidden by prompt.
 **One command, from a clean machine with Docker:**
 
 ```bash
-git clone https://github.com/SHAKTHI-HACKER/Nexarag-api.git Nexarag-api && cd Nexarag-api && make setup
+git clone https://github.com/SHAKTHI-HACKER/CorpusTrace-api.git CorpusTrace-api && cd CorpusTrace-api && make setup
 ```
 
 The target directory is named explicitly because git takes it from the URL you typed, not from
 the repository's real name. GitHub resolves repository names case-insensitively and redirects
-the old lowercase URL forever, so `git clone .../nexarag-api.git` succeeds — and silently
-creates `nexarag-api/`, which the next `cd` then fails to find on a case-sensitive filesystem.
+the old lowercase URL forever, so `git clone .../corpustrace-api.git` succeeds — and silently
+creates `corpustrace-api/`, which the next `cd` then fails to find on a case-sensitive filesystem.
 
 That clones the SPA beside this repo, writes a `.env` with freshly generated secrets, brings up
 MySQL, runs the migrations, seeds a superadmin, and starts everything. When it finishes it prints
@@ -169,5 +169,5 @@ Third-party dependency licenses — including the GPL-licensed `mysqlclient` pin
 is unused and recommended for removal — are catalogued in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-"NexaRAG" is a project name, not a licensed mark. Apache-2.0 grants no trademark rights
-(§6), so forks may use the code but should not present themselves as NexaRAG.
+"CorpusTrace" is a project name, not a licensed mark. Apache-2.0 grants no trademark rights
+(§6), so forks may use the code but should not present themselves as CorpusTrace.

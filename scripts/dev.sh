@@ -9,7 +9,7 @@
 set -euo pipefail
 
 API_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_DIR="$(cd "$API_DIR/.." && pwd)/Nexarag-app"
+APP_DIR="$(cd "$API_DIR/.." && pwd)/CorpusTrace-app"
 
 # shellcheck source=lib/common.sh
 . "$API_DIR/scripts/lib/common.sh"
@@ -32,8 +32,8 @@ nx_info "API → http://localhost:${API_PORT}   SPA → http://localhost:${DEV_P
 # The dev server reads both of these (see vite.config.ts): one to listen on, one to proxy
 # /api to. Without the second, moving the API off 8000 gives a SPA that loads and then
 # fails every request against a port with nothing behind it.
-export NEXARAG_DEV_PORT="$DEV_PORT"
-export NEXARAG_API_PORT="$API_PORT"
+export CORPUSTRACE_DEV_PORT="$DEV_PORT"
+export CORPUSTRACE_API_PORT="$API_PORT"
 
 trap 'kill 0' INT TERM EXIT
 ( cd "$API_DIR" && .venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port "$API_PORT" ) &

@@ -6,7 +6,7 @@
 # *starting* it, and only then install. Installing is the most invasive answer and the one
 # most likely to need a password, a reboot or a network the machine may not have.
 #
-# Nothing here installs without naming the exact command first. `NEXARAG_AUTO_INSTALL=0`
+# Nothing here installs without naming the exact command first. `CORPUSTRACE_AUTO_INSTALL=0`
 # turns installation off entirely and leaves the diagnosis in place.
 #
 # This file is held to the portability contract at the top of common.sh.
@@ -137,8 +137,8 @@ NX_APT_UPDATED=0
 nx_install() {
     local manager="" prefix="" names="" logical="" concrete="" command_line=""
 
-    if [ "${NEXARAG_AUTO_INSTALL:-1}" = "0" ]; then
-        nx_warn "auto-install is off (NEXARAG_AUTO_INSTALL=0); not installing: $*"
+    if [ "${CORPUSTRACE_AUTO_INSTALL:-1}" = "0" ]; then
+        nx_warn "auto-install is off (CORPUSTRACE_AUTO_INSTALL=0); not installing: $*"
         return 1
     fi
 

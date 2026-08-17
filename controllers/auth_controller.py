@@ -282,7 +282,7 @@ def handle_forgot_password(response: Response, schema: ForgotPasswordSchema, db:
     token = generate_random_code(16)
     encoded_token = encode_to_base64(encrypt_string(token))
     reset_password_url = f'{web_base_url}/reset-password/{encoded_token}'
-    email_template = EmailTemplate(subject="Reset Your NexaRAG Password",body=reset_password_email_template(user.first_name, reset_password_url))
+    email_template = EmailTemplate(subject="Reset Your CorpusTrace Password",body=reset_password_email_template(user.first_name, reset_password_url))
     # sending the email
     email_response = send_email(recipient_email=user.email,email_template=email_template)
     # throw error when email can not be sent
@@ -424,7 +424,7 @@ def register_controller(response: Response, data: UserRegisterRequest, db: Sessi
 
     # Send OTP email
     email_template = EmailTemplate(
-        subject="Your NexaRAG Verification Code",
+        subject="Your CorpusTrace Verification Code",
         body=otp_email_template(data.first_name, otp)
     )
     email_response = send_email(recipient_email=data.email, email_template=email_template)
@@ -509,7 +509,7 @@ def resend_otp_controller(response: Response, data: ResendOTPRequest, db: Sessio
 
     # Send OTP email
     email_template = EmailTemplate(
-        subject="Your NexaRAG Verification Code",
+        subject="Your CorpusTrace Verification Code",
         body=otp_email_template(user.first_name, otp)
     )
     email_response = send_email(recipient_email=user.email, email_template=email_template)

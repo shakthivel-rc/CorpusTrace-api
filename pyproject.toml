@@ -1,6 +1,6 @@
-# Test + coverage configuration for Nexarag-api.
+# Test + coverage configuration for CorpusTrace API.
 # NOTE: intentionally has NO [build-system] table — this file is config only, it does
-# not turn Nexarag-api into an installable package.
+# not turn this API into an installable package.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -8,7 +8,7 @@ asyncio_mode = "auto"
 markers = [
     "unit: pure/unit tests that need no database",
     "integration: tests that require a database (SQLite locally, MySQL in CI)",
-    "live: tests that talk over HTTP to a running stack; skipped unless NEXARAG_LIVE_URL is set",
+    "live: tests that talk over HTTP to a running stack; skipped unless CORPUSTRACE_LIVE_URL is set",
 ]
 addopts = "-ra"
 filterwarnings = [

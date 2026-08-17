@@ -43,7 +43,7 @@ from services.activity_log import log_activity
 from services.llm_provider import LlmProviderError, embedding_provider_options
 
 
-logger = logging.getLogger("nexarag.chat")
+logger = logging.getLogger("corpustrace.chat")
 
 # Streaming only reaches the user token-by-token if nothing in front of the app buffers
 # the body. nginx buffers proxied responses by default, which would re-assemble the whole
@@ -57,7 +57,7 @@ STREAM_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 # there is nowhere in it to put structured data without inventing a framing the whole
 # streaming path would have to learn. A header carries it without touching a single byte
 # of what already works.
-CITATION_HEADER = "X-Nexarag-Citations"
+CITATION_HEADER = "X-CorpusTrace-Citations"
 # Fields the client needs to render a chip and open the panel. `snippet`, `char_start` and
 # `char_end` are deliberately absent: they are fetched per citation from
 # GET /resources/chunks/{id} when the panel actually opens, which keeps document text out

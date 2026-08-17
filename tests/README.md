@@ -1,4 +1,4 @@
-# Nexarag-api test suite
+# CorpusTrace API test suite
 
 Automated tests for the FastAPI backend. Built on **pytest + httpx (TestClient) +
 pytest-cov + freezegun**, configured in [`../pyproject.toml`](../pyproject.toml) and
@@ -7,7 +7,7 @@ pytest-cov + freezegun**, configured in [`../pyproject.toml`](../pyproject.toml)
 ## How to run
 
 ```bash
-cd Nexarag-api
+cd CorpusTrace-api
 python -m venv .venv && source .venv/bin/activate      # or use the repo-root env/
 pip install -r requirements.txt -r requirements-dev.txt
 
@@ -21,7 +21,7 @@ needs zero infrastructure. Set `TEST_DATABASE_URL` to run the integration suite 
 real MySQL (the CI workflow does exactly this):
 
 ```bash
-TEST_DATABASE_URL=mysql+pymysql://root:root@127.0.0.1:3306/nexarag_test pytest
+TEST_DATABASE_URL=mysql+pymysql://root:root@127.0.0.1:3306/corpustrace_test pytest
 ```
 
 ## The harness ([conftest.py](conftest.py))
@@ -82,7 +82,7 @@ The tested surface — the pure business logic plus the auth/health request path
   point `TEST_DATABASE_URL` at a real MySQL yourself:
 
   ```bash
-  TEST_DATABASE_URL=mysql+pymysql://root:root@127.0.0.1:3306/nexarag_test pytest
+  TEST_DATABASE_URL=mysql+pymysql://root:root@127.0.0.1:3306/corpustrace_test pytest
   ```
 
   This is the one gap that matters, because SQLite also ignores `VARCHAR` limits — the

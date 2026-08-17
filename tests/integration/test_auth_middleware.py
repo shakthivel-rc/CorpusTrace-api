@@ -52,7 +52,7 @@ def test_valid_jwt_with_a_live_session_passes_through(client, db):
 
     resp = client.get("/", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
-    assert resp.json() == {"message": "NexaRAG API"}
+    assert resp.json() == {"message": "CorpusTrace API"}
 
 
 def test_revoked_session_is_rejected(client, db):

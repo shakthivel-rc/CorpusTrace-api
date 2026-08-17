@@ -95,7 +95,7 @@ def test_profile_returns_the_stored_superadmin_address_verbatim(admin):
 
     `UserProfileResponse.email` was `EmailStr`, which re-validates an address that the
     database has already accepted. email-validator refuses the special-use TLDs of
-    RFC 6761/6762 — .local, .localhost, .test, .invalid — so superadmin@nexarag.local
+    RFC 6761/6762 — .local, .localhost, .test, .invalid — so superadmin@corpustrace.local
     could sign in (login takes a plain `str`) and then got an uncaught ValidationError on
     the way *out*. With no global exception handler that is a bare, envelope-less 500.
 

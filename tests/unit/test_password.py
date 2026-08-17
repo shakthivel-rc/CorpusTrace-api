@@ -1,5 +1,5 @@
 """Unit tests for the password policy — the single validator behind all four
-password entry points. Mirrors Nexarag-app/src/lib/passwordRules.ts rule-for-rule."""
+password entry points. Mirrors CorpusTrace-app/src/lib/passwordRules.ts rule-for-rule."""
 import pytest
 
 from utils.password import hash_password, pwd_context, validate_password_policy

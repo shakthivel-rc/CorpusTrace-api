@@ -53,8 +53,8 @@ _JAVASCRIPT_TYPES = {
 }
 
 # Compose names the containers `<project>-<service>-<n>`; the project defaults to the
-# directory, which is `Nexarag-api`, lower-cased to `nexarag`.
-_CONTAINERS = ("nexarag-api-1", "nexarag-app-1", "nexarag-db-1")
+# directory, which is `CorpusTrace-api`, lower-cased to `corpustrace`.
+_CONTAINERS = ("corpustrace-api-1", "corpustrace-app-1", "corpustrace-db-1")
 
 
 def _essence(content_type: str | None) -> str:
@@ -213,7 +213,7 @@ def test_the_spa_index_is_served_as_html(spa: httpx.Client):
     assert response.status_code == 200
     assert _essence(response.headers.get("content-type")) == "text/html"
     assert '<div id="root"></div>' in response.text, "served HTML is not the SPA shell"
-    assert "<title>NexaRAG</title>" in response.text
+    assert "<title>CorpusTrace</title>" in response.text
 
 
 # --------------------------------------------------------------------------------------
@@ -224,7 +224,7 @@ def test_the_spa_index_is_served_as_html(spa: httpx.Client):
 def test_health_through_the_proxy_needs_the_api_prefix_twice(spa: httpx.Client):
     """`/api/api/v1/health/ready` is correct and is not a typo. This is why.
 
-    nginx's `location /api/ { proxy_pass http://nexarag_api/; }` strips the leading `/api`
+    nginx's `location /api/ { proxy_pass http://corpustrace_api/; }` strips the leading `/api`
     before the backend sees the path — the trailing slash on proxy_pass is what does it, and
     it mirrors the rewrite in `vite.config.ts` so one bundle works in both places. Meanwhile
     the health router is the single router that carries its own `/api/v1` prefix; every other
@@ -277,7 +277,7 @@ def test_the_proxy_strips_api_on_an_ordinary_route(spa: httpx.Client, unique: st
     """
     response = spa.post(
         "/api/user/login",
-        json={"username": f"nobody-{unique}@nexarag.invalid", "password": "not-the-password"},
+        json={"username": f"nobody-{unique}@corpustrace.invalid", "password": "not-the-password"},
     )
 
     assert _essence(response.headers.get("content-type")) == "application/json"
@@ -460,7 +460,7 @@ def test_every_container_reports_healthy(live_root: str, container: str):
     also blocks any orchestrator that gates rollout on health.
 
     `live_root` is requested but unused: these container names describe the stack
-    NEXARAG_LIVE_URL points at, so this must skip with the rest of the suite rather than
+    CORPUSTRACE_LIVE_URL points at, so this must skip with the rest of the suite rather than
     quietly inspecting whatever unrelated containers happen to be on the developer's daemon.
     """
     status = _docker_inspect(container, "{{.State.Health.Status}}")
@@ -485,7 +485,7 @@ def test_the_spa_healthcheck_probes_an_address_nginx_actually_binds(live_root: s
     hostname at all when the listen directive commits to one family — so that is what is
     asserted.
     """
-    probe = _docker_inspect("nexarag-app-1", "{{json .Config.Healthcheck.Test}}")
+    probe = _docker_inspect("corpustrace-app-1", "{{json .Config.Healthcheck.Test}}")
     command = " ".join(json.loads(probe))
 
     assert not re.search(r"https?://localhost\b", command), (

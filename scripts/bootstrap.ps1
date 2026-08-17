@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    NexaRAG setup for Windows.
+    CorpusTrace setup for Windows.
 
 .DESCRIPTION
     Installs what Windows is missing — Git and Docker Desktop — starts Docker if it is
@@ -141,7 +141,7 @@ function ConvertTo-BashPath {
 # -------------------------------------------------------------------------------------
 $apiDir = Split-Path -Parent $PSScriptRoot
 
-Write-Host "NexaRAG setup (Windows)" -ForegroundColor White
+Write-Host "CorpusTrace setup (Windows)" -ForegroundColor White
 Write-Info "PowerShell $($PSVersionTable.PSVersion) on $([Environment]::OSVersion.VersionString)"
 
 Write-Step "1. Git"

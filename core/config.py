@@ -66,7 +66,7 @@ class Settings:
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings(
-        app_name=os.getenv("APP_NAME", "NexaRAG API"),
+        app_name=os.getenv("APP_NAME", "CorpusTrace API"),
         environment=os.getenv("ENVIRONMENT", "development"),
         database_url=_required("DATABASE_URL"),
         secret_key=_required("SECRET_KEY"),

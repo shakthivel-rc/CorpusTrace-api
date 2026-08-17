@@ -2,7 +2,7 @@
 
 `UserProfileResponse` used to declare `email: EmailStr`, which re-validates a value that is
 already stored. email-validator refuses the special-use TLDs of RFC 6761/6762 — .local,
-.localhost, .test, .invalid — so the seeded superadmin at superadmin@nexarag.local could sign
+.localhost, .test, .invalid — so the seeded superadmin at superadmin@corpustrace.local could sign
 in (login takes a plain str) and then got an uncaught ValidationError, which with no global
 exception handler is a bare HTTP 500, on every profile load.
 
@@ -53,10 +53,10 @@ def _seed_user(db, email: str, user_id: str = "profile-user") -> str:
 @pytest.mark.parametrize(
     "email",
     [
-        "superadmin@nexarag.local",  # what the seeder actually creates
-        "someone@nexarag.localhost",
-        "someone@nexarag.test",
-        "someone@nexarag.invalid",
+        "superadmin@corpustrace.local",  # what the seeder actually creates
+        "someone@corpustrace.localhost",
+        "someone@corpustrace.test",
+        "someone@corpustrace.invalid",
         "someone@example.com",  # the ordinary case, to prove nothing else regressed
     ],
 )

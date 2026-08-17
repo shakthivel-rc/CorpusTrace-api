@@ -20,7 +20,7 @@ from core.config import get_settings
 from models.llm import LlmModelCatalog, LlmProviderCredential, LlmUserPreference
 
 
-logger = logging.getLogger("nexarag.llm")
+logger = logging.getLogger("corpustrace.llm")
 
 
 class LlmProviderError(Exception):
@@ -825,7 +825,7 @@ GROUNDED_SYSTEM_PROMPT = "You answer with strict grounding and citations."
 # source-grounded product into a general chatbot that appears to be quoting the user's
 # documents. Rule 6 exists because the user's message is untrusted input.
 CONVERSATIONAL_SYSTEM_PROMPT = (
-    "You are NexaRAG, a document-grounded assistant. You are strictly limited to greeting the "
+    "You are CorpusTrace, a document-grounded assistant. You are strictly limited to greeting the "
     "user, explaining what you are, and telling the user when their question is not covered by "
     "their uploaded documents. You never answer questions from your own knowledge."
 )
@@ -865,7 +865,7 @@ def build_grounded_prompt(query: str, evidence: list[dict], rag_mode: str, resou
             f"modality: {item['modality']}\n{item['content']}"
         )
     return (
-        "You are NexaRAG, a source-grounded document assistant. Answer only from the evidence below. "
+        "You are CorpusTrace, a source-grounded document assistant. Answer only from the evidence below. "
         "If the evidence does not answer the question, say you do not have enough information. "
         "Use citation markers like [1] for supported claims.\n\n"
         f"Resource: {resource_name}\n"
