@@ -70,6 +70,27 @@ seed: ## Seed the superadmin and default roles
 
 embeddings: ## Start Ollama and pull EmbeddingGemma — free local embeddings, nothing leaves the machine
 	$(COMPOSE) --profile embeddings up -d ollama
+	@# A container that failed to attach to the compose network still reports "Started" and
+	@# still passes its healthcheck, because `ollama list` reads a local directory and never
+	@# touches the network. It also inherits the host's /etc/resolv.conf verbatim, so the
+	@# failure lands two commands later as
+	@#   lookup registry.ollama.ai on 127.0.0.53:53: read: connection refused
+	@# 127.0.0.53 is the host's systemd-resolved stub. Nothing listens on it inside a
+	@# container, so that error reads as broken internet on a machine whose internet is fine.
+	@# The usual cause is a second stack — a pre-rename COMPOSE_PROJECT_NAME, or the one
+	@# scripts/lib/deps.sh stands up when a database password is unrecoverable — still
+	@# holding the published port.
+	@$(COMPOSE) --profile embeddings exec -T ollama getent hosts registry.ollama.ai >/dev/null 2>&1 || { \
+		echo ""; \
+		echo "  Ollama is running but cannot resolve registry.ollama.ai, which means the"; \
+		echo "  container is not attached to the compose network. Check whether another"; \
+		echo "  stack still holds the port, then recreate it:"; \
+		echo ""; \
+		echo "    docker ps --filter publish=$${OLLAMA_PORT:-11434}"; \
+		echo "    $(COMPOSE) --profile embeddings up -d --force-recreate ollama"; \
+		echo ""; \
+		exit 1; \
+	}
 	@echo "pulling embeddinggemma (622 MB, once)…"
 	$(COMPOSE) --profile embeddings exec ollama ollama pull embeddinggemma
 	@echo
