@@ -62,14 +62,21 @@ nx_native_python() {
 
 # --- dependencies ---------------------------------------------------------------------------
 
+# pip defaults to 5 retries at a 15 s timeout, which does not survive a blip on a proxied
+# network. That matters more here than the lost time: the ladder below reads *any* failure
+# of the first install as a missing compiler, so a dropped connection would be "repaired"
+# by installing build tools that were never absent and then by dropping mysqlclient — a
+# degraded install, arrived at silently, over a packet that did not arrive.
+NX_PIP_NET="--retries 10 --timeout 60"
+
 nx_native_pip() {
     local filtered="" url=""
 
     # shellcheck disable=SC2086
-    $NX_VENV_PIP install --quiet --upgrade pip >/dev/null 2>&1 || true
+    $NX_VENV_PIP install --quiet --upgrade pip $NX_PIP_NET >/dev/null 2>&1 || true
 
     # shellcheck disable=SC2086
-    if $NX_VENV_PIP install --quiet -r "$API_DIR/requirements.txt" -r "$API_DIR/requirements-dev.txt"; then
+    if $NX_VENV_PIP install --quiet $NX_PIP_NET -r "$API_DIR/requirements.txt" -r "$API_DIR/requirements-dev.txt"; then
         nx_ok "Python dependencies installed"
         return 0
     fi
@@ -81,7 +88,7 @@ nx_native_pip() {
     nx_warn "installing the pinned packages failed; the usual cause is mysqlclient having nothing to compile against"
     if nx_install build-tools mysql-dev pkg-config python-dev; then
         # shellcheck disable=SC2086
-        if $NX_VENV_PIP install --quiet -r "$API_DIR/requirements.txt" -r "$API_DIR/requirements-dev.txt"; then
+        if $NX_VENV_PIP install --quiet $NX_PIP_NET -r "$API_DIR/requirements.txt" -r "$API_DIR/requirements-dev.txt"; then
             nx_ok "Python dependencies installed"
             return 0
         fi
@@ -98,7 +105,7 @@ nx_native_pip() {
     filtered="$(mktemp "${TMPDIR:-/tmp}/corpustrace-req.XXXXXX")"
     grep -v -i '^mysqlclient' "$API_DIR/requirements.txt" > "$filtered"
     # shellcheck disable=SC2086
-    $NX_VENV_PIP install --quiet -r "$filtered" -r "$API_DIR/requirements-dev.txt" || {
+    $NX_VENV_PIP install --quiet $NX_PIP_NET -r "$filtered" -r "$API_DIR/requirements-dev.txt" || {
         rm -f "$filtered"
         nx_die "Python dependencies could not be installed. Re-run without --no-install, or
        install them by hand:  .venv/bin/pip install -r requirements.txt"

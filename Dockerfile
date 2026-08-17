@@ -19,8 +19,16 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copied on its own so a source-only change does not reinstall 29 pinned packages.
 COPY requirements.txt requirements-dev.txt ./
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+# --retries/--timeout are not decoration. pip defaults to 5 retries at a 15 s timeout, and
+# one dropped connection anywhere in 31 packages fails the whole build with
+#   ERROR: Could not find a version that satisfies the requirement passlib==1.7.4
+#          (from versions: none)
+# which names a package and a pin, reads exactly like a bad requirement, and sends the
+# reader to PyPI to check a version that was never the problem. The index page simply did
+# not arrive. Two minutes of build are thrown away for a blip that a retry would have
+# absorbed, and on a proxied or corporate network that blip is not rare.
+RUN pip install --no-cache-dir --upgrade pip --retries 10 --timeout 60 \
+    && pip install --no-cache-dir --retries 10 --timeout 60 -r requirements.txt
 
 # ---------------------------------------------------------------------------- runtime ---
 FROM python:3.12-slim
