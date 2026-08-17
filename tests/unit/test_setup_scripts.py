@@ -304,3 +304,74 @@ class TestLineEndings:
     def test_no_script_in_this_repository_has_crlf(self):
         for script in sorted(SCRIPTS.rglob("*.sh")):
             assert b"\r\n" not in script.read_bytes(), f"{script.name} has CRLF line endings"
+
+
+class TestOllamaBaseUrlRepair:
+    """The one setting whose right value differs between the two ways this project runs.
+
+    Natively the API reaches Ollama on the host at localhost; inside a container localhost
+    is that container, where nothing serves 11434. Both defaults are already correct — but
+    only while .env leaves the key unset, because compose's `${OLLAMA_BASE_URL:-...}` is a
+    default rather than an override. A .env that names it hands the container the host's
+    answer and every LLM call fails with "[Errno 111] Connection refused", reported against
+    the model rather than the address.
+
+    The block is sliced out and run on its own: the entrypoint around it waits on a database
+    and then execs a server.
+    """
+
+    MARKER = "RESULT="
+
+    def _block(self) -> str:
+        text = (SCRIPTS / "docker-entrypoint.sh").read_text()
+        start = text.index('case "${OLLAMA_BASE_URL:-}"')
+        return text[start : text.index("esac", start) + len("esac")]
+
+    def _run(self, url: str, *, ollama_resolves: bool, tmp_path: Path):
+        stub = tmp_path / "bin"
+        stub.mkdir(exist_ok=True)
+        getent = stub / "getent"
+        getent.write_text(f"#!/bin/sh\nexit {0 if ollama_resolves else 2}\n")
+        getent.chmod(0o755)
+        return subprocess.run(
+            ["sh", "-c", f'{self._block()}\nprintf "{self.MARKER}%s" "${{OLLAMA_BASE_URL:-}}"'],
+            capture_output=True,
+            text=True,
+            env={"PATH": f"{stub}:/usr/bin:/bin", "OLLAMA_BASE_URL": url},
+        )
+
+    def _value(self, result) -> str:
+        return result.stdout.split(self.MARKER, 1)[1]
+
+    @pytest.mark.parametrize("url", ["http://localhost:11434", "http://127.0.0.1:11434"])
+    def test_a_localhost_url_is_repaired_when_the_service_exists(self, url, tmp_path):
+        result = self._run(url, ollama_resolves=True, tmp_path=tmp_path)
+        assert self._value(result) == "http://ollama:11434"
+        # Repairs are announced. A silent one is indistinguishable from the setting having
+        # been ignored, which is the next thing someone would suspect.
+        assert "OLLAMA_BASE_URL" in result.stdout
+
+    def test_a_localhost_url_is_left_alone_with_no_ollama_service(self, tmp_path):
+        # What makes the rewrite safe: with no such service to reach, the operator's value
+        # is theirs — it may name a tunnel, or a host-networked container.
+        result = self._run("http://localhost:11434", ollama_resolves=False, tmp_path=tmp_path)
+        assert self._value(result) == "http://localhost:11434"
+
+    def test_a_remote_url_is_never_rewritten(self, tmp_path):
+        # Someone pointing at an Ollama on another machine has said something deliberate.
+        result = self._run("http://10.0.0.5:11434", ollama_resolves=True, tmp_path=tmp_path)
+        assert self._value(result) == "http://10.0.0.5:11434"
+
+
+class TestEnvExampleDefaults:
+    def test_ollama_base_url_ships_commented_out(self):
+        """An active line here is what defeats compose's container-correct default.
+
+        .env.example is copied wholesale into a real .env, so a value that is right for one
+        of the two run modes and wrong for the other must not be handed out pre-set.
+        """
+        for line in (API_DIR / ".env.example").read_text().splitlines():
+            assert not line.strip().startswith("OLLAMA_BASE_URL="), (
+                "OLLAMA_BASE_URL must ship commented out: an active value overrides the "
+                "compose default and points the containerised API at its own port"
+            )
