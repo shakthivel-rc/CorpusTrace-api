@@ -363,30 +363,45 @@ def _pack(
 # The option catalogue the UI renders
 # --------------------------------------------------------------------------------------
 
+# `size_effect` and `overlap_effect` are here rather than on the presets because the two
+# numbers do not mean the same thing under every strategy, and the form has no other way to
+# say so. Under `character` the size *is* the window; under `sentence` and `paragraph` it is
+# a ceiling whole units are packed up to; under `page` it is a ceiling that most pages never
+# reach, and the overlap only applies inside a page that did. Without these the size and
+# overlap controls render identically for all four, which reads as though changing the
+# strategy had left them behind — or worse, as though they had stopped applying.
 STRATEGIES: dict[str, dict] = {
     STRATEGY_CHARACTER: {
         "label": "Fixed size",
         "summary": "Slices a fixed number of characters, backing up to the last sentence end so a chunk rarely stops mid-sentence.",
         "best_for": "Anything, and the safe answer when you are not sure. This is how every document in this app was indexed before per-document settings existed.",
         "caveat": "Ignores the document's own structure, so a chunk can span the end of one section and the start of the next.",
+        "size_effect": "The window itself — each chunk is this long, minus whatever backing up to a sentence end trims.",
+        "overlap_effect": "Exactly how far the next window steps back, so this many characters appear in both chunks.",
     },
     STRATEGY_SENTENCE: {
         "label": "By sentence",
         "summary": "Packs whole sentences up to the size budget and never splits one in half.",
         "best_for": "Dense prose where a truncated sentence would change its meaning — policies, contracts, medical or legal text.",
         "caveat": "Chunks come out slightly under the size budget, so a document produces a few more of them.",
+        "size_effect": "A ceiling, not a target: sentences are added until the next one would cross it. A single sentence longer than this is split by characters.",
+        "overlap_effect": "How much text to repeat between neighbours, rounded out to whole sentences — so the repeat rarely matches the number exactly.",
     },
     STRATEGY_PARAGRAPH: {
         "label": "By paragraph",
         "summary": "Keeps a paragraph whole where the document's paragraph breaks survived text extraction.",
         "best_for": "Documents whose paragraphs are self-contained: FAQs, release notes, clause-per-paragraph agreements.",
         "caveat": "PDFs lose paragraph breaks during extraction — in a PDF this only knows page boundaries and packs by sentence within a page.",
+        "size_effect": "A ceiling, not a target: paragraphs are added until the next one would cross it. A paragraph longer than this on its own is split by characters.",
+        "overlap_effect": "How much text to repeat between neighbours, rounded out to whole paragraphs — so the repeat rarely matches the number exactly.",
     },
     STRATEGY_PAGE: {
         "label": "One chunk per page",
         "summary": "Each page becomes one chunk, split further only if a page exceeds the size budget.",
         "best_for": "PDFs where a page is a unit of meaning — forms, datasheets, slide decks, scanned-and-OCRd manuals.",
         "caveat": "PDF only. Any other format falls back to Fixed size, and the ingestion report will say so.",
+        "size_effect": "A ceiling only. A page shorter than this stays one chunk whatever the number says; only a longer page is split further, by characters.",
+        "overlap_effect": "Applies only inside a page that was too long for the size budget. Pages never overlap each other, so on most PDFs this changes nothing.",
     },
 }
 

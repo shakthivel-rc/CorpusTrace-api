@@ -192,6 +192,15 @@ class TestIndexingOptionsCatalogue:
         assert data["bounds"]["min_chunk_size"] == chunking.MIN_CHUNK_SIZE
         assert data["bounds"]["max_chunk_size"] == chunking.MAX_CHUNK_SIZE
 
+        # The controller spreads the whole spec, so these ride along for free — which is
+        # exactly why they need pinning. The size and overlap controls offer identical
+        # values under every strategy, and these two lines are the only thing that tells a
+        # user what those values mean under the strategy they picked. Dropped from the
+        # payload, the form silently goes back to describing all four as fixed-size windows.
+        for strategy in data["strategies"]:
+            for key in ("size_effect", "overlap_effect"):
+                assert strategy.get(key), f"{strategy['id']} has no {key}"
+
     def test_the_advertised_defaults_are_the_ones_an_unconfigured_upload_gets(self, client, db):
         # The form pre-selects these. If they drift from DEFAULT_CONFIG the UI shows one
         # setting and the server applies another, which is unfalsifiable from the outside.

@@ -680,8 +680,35 @@ class TestTheRecommendationsAreUsable:
             assert config.overlap == preset["value"], f"clamped at chunk size {size}"
         assert preset["label"] and preset["hint"]
 
+    DOCUMENTED_KEYS = ("label", "summary", "best_for", "caveat", "size_effect", "overlap_effect")
+
     @pytest.mark.parametrize("strategy", sorted(chunking.STRATEGIES))
     def test_every_strategy_is_documented_for_the_options_endpoint(self, strategy):
         spec = chunking.STRATEGIES[strategy]
-        assert {"label", "summary", "best_for", "caveat"} <= set(spec)
-        assert all(str(spec[key]).strip() for key in ("label", "summary", "best_for", "caveat"))
+        assert set(self.DOCUMENTED_KEYS) <= set(spec)
+        assert all(str(spec[key]).strip() for key in self.DOCUMENTED_KEYS)
+
+    def test_every_strategy_says_what_size_and_overlap_do_under_it(self):
+        """The size and overlap controls render the same options for all four strategies,
+        because all four really do use both numbers — but they use them for different
+        things. Under `character` the size is the window; under `sentence`/`paragraph` it is
+        a ceiling whole units are packed up to; under `page` it is a ceiling most pages never
+        reach, and the overlap only ever applies *inside* a page that did.
+
+        Identical copy for all four is what makes the form look as though changing the
+        strategy left those two controls behind. These strings are the only thing that
+        distinguishes them, so a copy-paste that gave two strategies the same sentence would
+        put the form straight back where it was.
+        """
+        sizes = [spec["size_effect"] for spec in chunking.STRATEGIES.values()]
+        overlaps = [spec["overlap_effect"] for spec in chunking.STRATEGIES.values()]
+
+        # `sentence` and `paragraph` share a packer, so their *size* wording legitimately
+        # differs only in the unit it names — but no two may be byte-identical.
+        assert len(set(sizes)) == len(chunking.STRATEGIES)
+        assert len(set(overlaps)) == len(chunking.STRATEGIES)
+
+        # The one a user cannot deduce from the strategy's own description: overlap is very
+        # nearly inert under `page`, and `_split_by_pages` only passes it on to the character
+        # splitter for a page that exceeded the budget.
+        assert "page" in chunking.STRATEGIES[chunking.STRATEGY_PAGE]["overlap_effect"].lower()

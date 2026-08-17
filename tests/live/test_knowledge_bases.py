@@ -198,7 +198,10 @@ class TestIndexingOptionsCatalogue:
         for strategy in data["strategies"]:
             # The caveat is not decoration: "page" on a .txt degrades to Fixed size, and the
             # user has to be able to read that *before* uploading rather than in the report.
-            for key in ("label", "summary", "best_for", "caveat"):
+            # Nor are the two effect lines: the size and overlap controls offer the same
+            # values whatever the strategy, and these are the only thing that says what those
+            # values mean under the one that is selected.
+            for key in ("label", "summary", "best_for", "caveat", "size_effect", "overlap_effect"):
                 assert strategy.get(key), f"{strategy['id']} has no {key}"
 
     def test_publishes_the_bounds_the_chunker_actually_clamps_to(self, admin):
