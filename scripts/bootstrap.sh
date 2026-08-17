@@ -35,7 +35,7 @@ set -euo pipefail
 
 API_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="$(cd "$API_DIR/.." && pwd)/CorpusTrace-app"
-APP_REPO="${CORPUSTRACE_APP_REPO:-https://github.com/SHAKTHI-HACKER/CorpusTrace-app.git}"
+APP_REPO="${CORPUSTRACE_APP_REPO:-https://github.com/shakthivel-rc/CorpusTrace-app.git}"
 ENV_FILE="$API_DIR/.env"
 
 # shellcheck source=lib/common.sh

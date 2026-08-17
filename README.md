@@ -4,7 +4,7 @@ FastAPI backend for **CorpusTrace** — an authenticated service for uploading d
 knowledge base and asking questions against them, plus a full identity and access-control
 console.
 
-Pairs with the React SPA in the [`CorpusTrace-app`](https://github.com/SHAKTHI-HACKER/CorpusTrace-app) repository.
+Pairs with the React SPA in the [`CorpusTrace-app`](https://github.com/shakthivel-rc/CorpusTrace-app) repository.
 
 ---
 
@@ -64,7 +64,7 @@ code, not merely forbidden by prompt.
 **One command, from a clean machine with Docker:**
 
 ```bash
-git clone https://github.com/SHAKTHI-HACKER/CorpusTrace-api.git CorpusTrace-api && cd CorpusTrace-api && make setup
+git clone https://github.com/shakthivel-rc/CorpusTrace-api.git CorpusTrace-api && cd CorpusTrace-api && make setup
 ```
 
 The target directory is named explicitly because git takes it from the URL you typed, not from
