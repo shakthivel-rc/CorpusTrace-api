@@ -1,0 +1,746 @@
+{
+  "_comment": "Synthetic benchmark for the High-Precision RAG mode. Two halves, on purpose. Documents 1-4 (api-reference, ops-runbook, motorcycle-manual, billing-policy) are ordinary prose with an abbreviation (db), a synonym the corpus never spells the query's way (bike/motorcycle), two typos, a version only a metadata filter separates, and a near-duplicate pair for deduplication. Document 5 (aurora-controller-handbook) is the shape real documentation actually has: it repeats its own subject in every chunk, so term-frequency scoring cannot discriminate and only IDF can, and it carries a glossary and an index chunk that repeat single words many times as term-frequency traps. Reporting the two halves separately is honest; reporting only the second would be rigging.",
+  "resource_name": "Benchmark",
+  "chunks": [
+    {
+      "id": "doc-api-00",
+      "file_id": "doc-api",
+      "source_name": "api-reference.pdf",
+      "modality": "pdf",
+      "title": "Platform API Reference",
+      "page_start": 1,
+      "content": "1 Overview The platform API is a JSON over HTTPS interface. Every request must be authenticated. Responses are wrapped in a status envelope."
+    },
+    {
+      "id": "doc-api-01",
+      "file_id": "doc-api",
+      "source_name": "api-reference.pdf",
+      "modality": "pdf",
+      "title": "Platform API Reference",
+      "page_start": 2,
+      "content": "2.1 Authentication Tokens An access token is issued by POST /v1/login and expires after sixty minutes. Present it as a bearer token in the Authorization header on every subsequent request."
+    },
+    {
+      "id": "doc-api-02",
+      "file_id": "doc-api",
+      "source_name": "api-reference.pdf",
+      "modality": "pdf",
+      "title": "Platform API Reference",
+      "page_start": 2,
+      "content": "A refresh token is issued alongside the access token and remains valid for thirty days. Exchange it at POST /v1/refresh to obtain a new access token without asking the user to sign in again."
+    },
+    {
+      "id": "doc-api-03",
+      "file_id": "doc-api",
+      "source_name": "api-reference.pdf",
+      "modality": "pdf",
+      "title": "Platform API Reference",
+      "page_start": 3,
+      "content": "2.2 Resetting A Compromised Token Revoke a leaked access token by calling POST /v1/tokens/revoke with the token identifier. Revocation takes effect immediately and every session using that token is closed."
+    },
+    {
+      "id": "doc-api-04",
+      "file_id": "doc-api",
+      "source_name": "api-reference.pdf",
+      "modality": "pdf",
+      "title": "Platform API Reference",
+      "page_start": 4,
+      "content": "3.1 Rate Limits In version 4.1 the default rate limit was 600 requests per minute per account. Exceeding it returned HTTP 429 with a Retry-After header."
+    },
+    {
+      "id": "doc-api-05",
+      "file_id": "doc-api",
+      "source_name": "api-reference.pdf",
+      "modality": "pdf",
+      "title": "Platform API Reference",
+      "page_start": 4,
+      "content": "3.2 Rate Limits In version 4.2 the default rate limit is 1200 requests per minute per account, measured over a sliding sixty second window. Burst traffic above the limit is queued rather than rejected."
+    },
+    {
+      "id": "doc-api-06",
+      "file_id": "doc-api",
+      "source_name": "api-reference.pdf",
+      "modality": "pdf",
+      "title": "Platform API Reference",
+      "page_start": 5,
+      "content": "4 Pagination Every collection endpoint accepts a limit and an offset parameter. The maximum page size is 200 records. The response carries a total count."
+    },
+    {
+      "id": "doc-api-07",
+      "file_id": "doc-api",
+      "source_name": "api-reference.pdf",
+      "modality": "pdf",
+      "title": "Platform API Reference",
+      "page_start": 6,
+      "content": "5 Error Codes A 400 indicates a malformed request body. A 401 indicates a missing or expired access token. A 403 indicates the account lacks the permission the endpoint requires."
+    },
+    {
+      "id": "doc-ops-00",
+      "file_id": "doc-ops",
+      "source_name": "ops-runbook.docx",
+      "modality": "text",
+      "title": "Operations Runbook",
+      "page_start": null,
+      "content": "1 Purpose This runbook covers routine operational tasks for the production service. Follow the escalation policy before making any change during an incident."
+    },
+    {
+      "id": "doc-ops-01",
+      "file_id": "doc-ops",
+      "source_name": "ops-runbook.docx",
+      "modality": "text",
+      "title": "Operations Runbook",
+      "page_start": null,
+      "content": "2.1 Connection Pooling The database connection pool opens twenty connections at start-up and grows to a hard maximum of one hundred. Resize it with the pool_size setting."
+    },
+    {
+      "id": "doc-ops-02",
+      "file_id": "doc-ops",
+      "source_name": "ops-runbook.docx",
+      "modality": "text",
+      "title": "Operations Runbook",
+      "page_start": null,
+      "content": "2.2 Connection Timeouts A database connection timeout of thirty seconds applies to every checkout from the pool. When the pool is exhausted the caller waits for that timeout and then receives a ConnectionPoolTimeout error."
+    },
+    {
+      "id": "doc-ops-03",
+      "file_id": "doc-ops",
+      "source_name": "ops-runbook.docx",
+      "modality": "text",
+      "title": "Operations Runbook",
+      "page_start": null,
+      "content": "Raising pool_size reduces timeout errors under sustained load, at the cost of more open sockets on the database server. Measure before changing it."
+    },
+    {
+      "id": "doc-ops-04",
+      "file_id": "doc-ops",
+      "source_name": "ops-runbook.docx",
+      "modality": "text",
+      "title": "Operations Runbook",
+      "page_start": null,
+      "content": "2.3 Query Timeouts A statement timeout of ten seconds is applied at the database server. A long analytical query will be cancelled by the server rather than holding a pooled connection open."
+    },
+    {
+      "id": "doc-ops-05",
+      "file_id": "doc-ops",
+      "source_name": "ops-runbook.docx",
+      "modality": "text",
+      "title": "Operations Runbook",
+      "page_start": null,
+      "content": "3 Restarting The Service Drain traffic first, then send SIGTERM and wait for in-flight requests to finish. A hard kill during a write leaves the migration table inconsistent."
+    },
+    {
+      "id": "doc-ops-06",
+      "file_id": "doc-ops",
+      "source_name": "ops-runbook.docx",
+      "modality": "text",
+      "title": "Operations Runbook",
+      "page_start": null,
+      "content": "4 Backups A full backup runs nightly at 02:00 UTC and is retained for thirty five days. Restore is tested quarterly against a scratch instance."
+    },
+    {
+      "id": "doc-ops-07",
+      "file_id": "doc-ops",
+      "source_name": "ops-runbook.docx",
+      "modality": "text",
+      "title": "Operations Runbook",
+      "page_start": null,
+      "content": "5 Disk Pressure When free disk falls below fifteen percent the log shipper stops and alerts fire. Rotate and archive logs before extending the volume."
+    },
+    {
+      "id": "doc-moto-00",
+      "file_id": "doc-moto",
+      "source_name": "motorcycle-manual.pdf",
+      "modality": "pdf",
+      "title": "Motorcycle Owner Manual",
+      "page_start": 7,
+      "content": "SAFETY PRECAUTIONS Always disconnect the battery before servicing any electrical component. The battery terminals carry enough current to weld a spanner to the frame."
+    },
+    {
+      "id": "doc-moto-01",
+      "file_id": "doc-moto",
+      "source_name": "motorcycle-manual.pdf",
+      "modality": "pdf",
+      "title": "Motorcycle Owner Manual",
+      "page_start": 12,
+      "content": "6.1 Drive Chain Adjustment Check the free play at the midpoint of the lower chain run. Correct free play is 25 to 35 millimetres with the motorcycle on its side stand and no rider aboard."
+    },
+    {
+      "id": "doc-moto-02",
+      "file_id": "doc-moto",
+      "source_name": "motorcycle-manual.pdf",
+      "modality": "pdf",
+      "title": "Motorcycle Owner Manual",
+      "page_start": 13,
+      "content": "Lubricate the drive chain every 600 kilometres, and immediately after riding in rain. A dry chain wears the rear sprocket rapidly and can snap under load."
+    },
+    {
+      "id": "doc-moto-03",
+      "file_id": "doc-moto",
+      "source_name": "motorcycle-manual.pdf",
+      "modality": "pdf",
+      "title": "Motorcycle Owner Manual",
+      "page_start": 15,
+      "content": "6.4 Brake Fluid Replace the brake fluid every two years regardless of mileage. Absorbed moisture lowers the boiling point and produces a spongy lever after repeated hard braking."
+    },
+    {
+      "id": "doc-moto-04",
+      "file_id": "doc-moto",
+      "source_name": "motorcycle-manual.pdf",
+      "modality": "pdf",
+      "title": "Motorcycle Owner Manual",
+      "page_start": 18,
+      "content": "7.2 Tyre Pressure Cold tyre pressure is 2.25 bar at the front and 2.50 bar at the rear for solo riding. Add 0.25 bar at the rear when carrying a passenger or luggage."
+    },
+    {
+      "id": "doc-moto-05",
+      "file_id": "doc-moto",
+      "source_name": "motorcycle-manual.pdf",
+      "modality": "pdf",
+      "title": "Motorcycle Owner Manual",
+      "page_start": 21,
+      "content": "8.1 Engine Oil The engine holds 3.4 litres of oil with a filter change. Use a 10W-40 semi synthetic meeting the JASO MA2 specification."
+    },
+    {
+      "id": "doc-moto-06",
+      "file_id": "doc-moto",
+      "source_name": "motorcycle-manual.pdf",
+      "modality": "pdf",
+      "title": "Motorcycle Owner Manual",
+      "page_start": 24,
+      "content": "9 Storage Before storing the motorcycle for the winter, fill the fuel tank, connect a trickle charger to the battery and raise both wheels off the ground."
+    },
+    {
+      "id": "doc-bill-00",
+      "file_id": "doc-bill",
+      "source_name": "billing-policy.pdf",
+      "modality": "pdf",
+      "title": "Billing Policy",
+      "page_start": 1,
+      "content": "1 Invoicing Invoices are issued monthly in arrears on the first working day of the month. Payment terms are net thirty days from the invoice date."
+    },
+    {
+      "id": "doc-bill-01",
+      "file_id": "doc-bill",
+      "source_name": "billing-policy.pdf",
+      "modality": "pdf",
+      "title": "Billing Policy",
+      "page_start": 2,
+      "content": "2 Late Payment Accounts more than fifteen days overdue are suspended. A suspended account retains its data but every API request returns HTTP 402 until the balance is settled."
+    },
+    {
+      "id": "doc-bill-02",
+      "file_id": "doc-bill",
+      "source_name": "billing-policy.pdf",
+      "modality": "pdf",
+      "title": "Billing Policy",
+      "page_start": 3,
+      "content": "3 Refunds A refund request must reach billing within ninety days of the charge. Refunds are returned to the original payment method and take five to ten working days to clear."
+    },
+    {
+      "id": "doc-bill-03",
+      "file_id": "doc-bill",
+      "source_name": "billing-policy.pdf",
+      "modality": "pdf",
+      "title": "Billing Policy",
+      "page_start": 4,
+      "content": "4 Plan Changes An upgrade takes effect immediately and is prorated to the day. A downgrade takes effect at the start of the next billing period."
+    },
+    {
+      "id": "doc-bill-dup",
+      "file_id": "doc-bill",
+      "source_name": "billing-policy.pdf",
+      "modality": "pdf",
+      "title": "Billing Policy",
+      "page_start": 3,
+      "content": "3 Refunds A refund request must reach billing within ninety days of the charge. Refunds are returned to the original payment method and clear in five to ten working days."
+    },
+    {
+      "id": "doc-hb-00",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 1,
+      "chunk_index": 0,
+      "content": "1 About The Aurora Controller The Aurora controller is a rack mounted unit. The Aurora controller ships with a controller mounting kit. Every Aurora controller carries a serial label on the controller chassis."
+    },
+    {
+      "id": "doc-hb-01",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 2,
+      "chunk_index": 1,
+      "content": "2.1 Aurora Controller Power The Aurora controller draws 45 watts at idle and 180 watts at full load. Provide the Aurora controller with a dedicated circuit. The controller power supply is not user serviceable."
+    },
+    {
+      "id": "doc-hb-02",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 3,
+      "chunk_index": 2,
+      "content": "2.2 Aurora Controller Mounting Mount the Aurora controller in a controller rack with at least one rack unit of clearance above the controller. The Aurora controller vents from the controller rear panel."
+    },
+    {
+      "id": "doc-hb-03",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 4,
+      "chunk_index": 3,
+      "content": "3.1 Aurora Controller Firmware The Aurora controller firmware is signed. The controller verifies the firmware signature at boot. A controller running unsigned firmware refuses to start and the Aurora controller status light blinks amber."
+    },
+    {
+      "id": "doc-hb-04",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 5,
+      "chunk_index": 4,
+      "content": "3.2 Firmware Rollback A firmware rollback is permitted only to the immediately preceding release. Hold the recessed button on the Aurora controller for fifteen seconds while powering the controller on to begin a rollback."
+    },
+    {
+      "id": "doc-hb-05",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 6,
+      "chunk_index": 5,
+      "content": "3.3 Aurora Controller Update Channels The Aurora controller subscribes to a stable channel by default. A controller on the beta channel receives Aurora controller firmware before general availability."
+    },
+    {
+      "id": "doc-hb-06",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 7,
+      "chunk_index": 6,
+      "content": "4.1 Aurora Controller Networking The Aurora controller obtains an address by DHCP. Assign the Aurora controller a static reservation so the controller keeps one address across reboots."
+    },
+    {
+      "id": "doc-hb-07",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 8,
+      "chunk_index": 7,
+      "content": "4.2 Controller Port Assignments The Aurora controller listens on port 8443 for the controller management interface and on port 1883 for controller telemetry."
+    },
+    {
+      "id": "doc-hb-08",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 9,
+      "chunk_index": 8,
+      "content": "5.1 Aurora Controller Sensors Each Aurora controller supports sixteen sensor channels. The controller samples every sensor channel at one hertz and buffers controller readings for seven days."
+    },
+    {
+      "id": "doc-hb-09",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 10,
+      "chunk_index": 9,
+      "content": "5.2 Sensor Calibration Calibrate a sensor channel against a reference cell at twenty five degrees. The Aurora controller stores the calibration offset in controller non volatile memory."
+    },
+    {
+      "id": "doc-hb-10",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 11,
+      "chunk_index": 10,
+      "content": "6.1 Aurora Controller Alarms An alarm latches until it is acknowledged from the controller management interface. The Aurora controller relays a latched alarm to the controller alarm contact."
+    },
+    {
+      "id": "doc-hb-11",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 12,
+      "chunk_index": 11,
+      "content": "6.2 Controller Alarm Thresholds Set the alarm threshold per sensor channel. The Aurora controller applies a two sample debounce before the controller raises an alarm."
+    },
+    {
+      "id": "doc-hb-12",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 13,
+      "chunk_index": 12,
+      "content": "7.1 Aurora Controller Logging The Aurora controller writes a controller event log to internal storage. Export the controller log from the Aurora controller management interface as a CSV file."
+    },
+    {
+      "id": "doc-hb-13",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 14,
+      "chunk_index": 13,
+      "content": "7.2 Controller Diagnostics Run the controller self test from the Aurora controller front panel. The Aurora controller self test exercises every controller sensor channel and the controller alarm contact."
+    },
+    {
+      "id": "doc-hb-14",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 15,
+      "chunk_index": 14,
+      "content": "8.1 Aurora Controller Warranty The Aurora controller carries a thirty six month warranty. Opening the Aurora controller chassis voids the controller warranty."
+    },
+    {
+      "id": "doc-hb-15",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 16,
+      "chunk_index": 15,
+      "content": "8.2 Controller Disposal Return an end of life Aurora controller to the distributor. The Aurora controller contains a lithium coin cell on the controller mainboard."
+    },
+    {
+      "id": "doc-hb-16",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 17,
+      "chunk_index": 16,
+      "content": "9 Glossary Rollback rollback rollback: the rollback term appears in the rollback glossary because rollback is a rollback concept. See also rollback, firmware rollback and controller rollback."
+    },
+    {
+      "id": "doc-hb-17",
+      "file_id": "doc-hb",
+      "source_name": "aurora-controller-handbook.pdf",
+      "modality": "pdf",
+      "title": "Aurora Controller Handbook",
+      "page_start": 18,
+      "chunk_index": 17,
+      "content": "10 Index Warranty warranty warranty warranty. Alarm alarm alarm alarm. Sensor sensor sensor sensor. Firmware firmware firmware firmware. Calibration calibration calibration calibration."
+    }
+  ],
+  "cases": [
+    {
+      "query": "how long is an access token valid",
+      "expected_chunks": [
+        "doc-api-01"
+      ],
+      "expected_documents": [
+        "doc-api"
+      ],
+      "notes": "exact-ish lexical match"
+    },
+    {
+      "query": "how do I revoke a leaked token",
+      "expected_chunks": [
+        "doc-api-03"
+      ],
+      "expected_documents": [
+        "doc-api"
+      ],
+      "notes": "heading match, 'reset/revoke'"
+    },
+    {
+      "query": "what is the rate limit in version 4.2",
+      "expected_chunks": [
+        "doc-api-05"
+      ],
+      "expected_documents": [
+        "doc-api"
+      ],
+      "notes": "version metadata filter must beat the 4.1 chunk"
+    },
+    {
+      "query": "maximum page size for a collection endpoint",
+      "expected_chunks": [
+        "doc-api-06"
+      ],
+      "expected_documents": [
+        "doc-api"
+      ]
+    },
+    {
+      "query": "what does a 401 mean",
+      "expected_chunks": [
+        "doc-api-07"
+      ],
+      "expected_documents": [
+        "doc-api"
+      ]
+    },
+    {
+      "query": "database connection timeout",
+      "expected_chunks": [
+        "doc-ops-02"
+      ],
+      "expected_documents": [
+        "doc-ops"
+      ],
+      "notes": "proximity: three chunks mention pools and timeouts"
+    },
+    {
+      "query": "db timeout",
+      "expected_chunks": [
+        "doc-ops-02"
+      ],
+      "expected_documents": [
+        "doc-ops"
+      ],
+      "notes": "abbreviation expansion db -> database"
+    },
+    {
+      "query": "how do I make the connection pool bigger",
+      "expected_chunks": [
+        "doc-ops-01",
+        "doc-ops-03"
+      ],
+      "expected_documents": [
+        "doc-ops"
+      ],
+      "notes": "two relevant chunks"
+    },
+    {
+      "query": "conection pool exhasted",
+      "expected_chunks": [
+        "doc-ops-02"
+      ],
+      "expected_documents": [
+        "doc-ops"
+      ],
+      "notes": "corpus-anchored spelling correction"
+    },
+    {
+      "query": "when do backups run",
+      "expected_chunks": [
+        "doc-ops-06"
+      ],
+      "expected_documents": [
+        "doc-ops"
+      ]
+    },
+    {
+      "query": "how do I safely restart the service",
+      "expected_chunks": [
+        "doc-ops-05"
+      ],
+      "expected_documents": [
+        "doc-ops"
+      ]
+    },
+    {
+      "query": "bike chain free play",
+      "expected_chunks": [
+        "doc-moto-01"
+      ],
+      "expected_documents": [
+        "doc-moto"
+      ],
+      "notes": "synonym: the manual says motorcycle, never bike"
+    },
+    {
+      "query": "tyre pressure with a pillion passenger",
+      "expected_chunks": [
+        "doc-moto-04"
+      ],
+      "expected_documents": [
+        "doc-moto"
+      ]
+    },
+    {
+      "query": "how much engine oil does it take",
+      "expected_chunks": [
+        "doc-moto-05"
+      ],
+      "expected_documents": [
+        "doc-moto"
+      ]
+    },
+    {
+      "query": "battery safety before servicing",
+      "expected_chunks": [
+        "doc-moto-00"
+      ],
+      "expected_documents": [
+        "doc-moto"
+      ],
+      "notes": "ALL CAPS heading"
+    },
+    {
+      "query": "brake fluid replacement interval",
+      "expected_chunks": [
+        "doc-moto-03"
+      ],
+      "expected_documents": [
+        "doc-moto"
+      ]
+    },
+    {
+      "query": "how long do I have to ask for a refund",
+      "expected_documents": [
+        "doc-bill"
+      ],
+      "notes": "doc-bill-dup is a near-copy of doc-bill-02, so the two are ONE piece of evidence expressed twice. Grouped rather than listed flat: deduplication is supposed to return exactly one of them, and a flat list would score that correct behaviour as a recall miss.",
+      "expected_chunk_groups": [
+        [
+          "doc-bill-02",
+          "doc-bill-dup"
+        ]
+      ]
+    },
+    {
+      "query": "what happens when an account is overdue",
+      "expected_chunks": [
+        "doc-bill-01"
+      ],
+      "expected_documents": [
+        "doc-bill"
+      ]
+    },
+    {
+      "query": "payment terms net thirty days",
+      "expected_chunks": [
+        "doc-bill-00"
+      ],
+      "expected_documents": [
+        "doc-bill"
+      ]
+    },
+    {
+      "query": "does an upgrade take effect immediately",
+      "expected_chunks": [
+        "doc-bill-03"
+      ],
+      "expected_documents": [
+        "doc-bill"
+      ]
+    },
+    {
+      "query": "aurora controller firmware rollback",
+      "expected_chunks": [
+        "doc-hb-04"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ],
+      "notes": "IDF: 'aurora' and 'controller' are in almost every chunk; only 'rollback' discriminates, and a glossary chunk repeats it eleven times"
+    },
+    {
+      "query": "controller warranty length",
+      "expected_chunks": [
+        "doc-hb-14"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ],
+      "notes": "IDF + the index chunk repeating 'warranty' four times"
+    },
+    {
+      "query": "how often does the controller sample a sensor channel",
+      "expected_chunks": [
+        "doc-hb-08"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ],
+      "notes": "proximity: three chunks discuss sensor channels"
+    },
+    {
+      "query": "controller alarm debounce",
+      "expected_chunks": [
+        "doc-hb-11"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ],
+      "notes": "rare term inside a repetitive document"
+    },
+    {
+      "query": "which port is the management interface on",
+      "expected_chunks": [
+        "doc-hb-07"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ]
+    },
+    {
+      "query": "static address reservation for the controller",
+      "expected_chunks": [
+        "doc-hb-06"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ]
+    },
+    {
+      "query": "what happens if the firmware is unsigned",
+      "expected_chunks": [
+        "doc-hb-03"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ]
+    },
+    {
+      "query": "power draw at full load",
+      "expected_chunks": [
+        "doc-hb-01"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ]
+    },
+    {
+      "query": "export the controller event log",
+      "expected_chunks": [
+        "doc-hb-12"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ]
+    },
+    {
+      "query": "lithium cell disposal",
+      "expected_chunks": [
+        "doc-hb-15"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ]
+    },
+    {
+      "query": "calibration reference temperature",
+      "expected_chunks": [
+        "doc-hb-09"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ]
+    },
+    {
+      "query": "rack clearance above the unit",
+      "expected_chunks": [
+        "doc-hb-02"
+      ],
+      "expected_documents": [
+        "doc-hb"
+      ]
+    }
+  ]
+}

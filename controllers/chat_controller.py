@@ -25,6 +25,7 @@ from rag import chunking
 from rag.chunking import IndexingConfig
 from rag.service import (
     SUPPORTED_RAG_MODES,
+    explain_precision_retrieval,
     get_user_chunk,
     get_user_file,
     list_resource_documents,
@@ -720,3 +721,39 @@ def fetch_source_file(request, db: Session, file_id: str):
     safe_name = file_record.file_name.replace('"', "")
     headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
     return FileResponse(path=str(target), media_type=media_type, headers=headers)
+
+
+def explain_precision_query(request, db: Session, resource_id: str, query: str, overrides: dict | None):
+    """`POST /resources/{id}/precision-trace` — how the High-Precision mode ranked a query.
+
+    Read-only and mode-specific: it runs `rag/precision/` only and touches none of the six
+    other retrieval modes, so it cannot change or be changed by them. Nothing is persisted —
+    no chat history, no activity log — because this is a question about the retriever, not
+    a question the user asked their documents.
+
+    Another user's knowledge base is a 404, matching `GET /resources/{id}/documents`: a 403
+    would confirm the id exists.
+    """
+    user_payload = getattr(request.state, "user", None)
+    if not user_payload:
+        return JSONResponse(
+            status_code=401,
+            content=ErrorResponse(status_code=401, message="Not authenticated").model_dump(),
+        )
+    try:
+        report = explain_precision_retrieval(db, user_payload.get("sub"), resource_id, query, overrides)
+    except LlmProviderError as exc:
+        # Only reachable through the optional embedding call. The pipeline itself makes no
+        # provider request, so this is the embedding provider being unreachable — reported
+        # rather than swallowed, because a trace that silently omitted the dense side would
+        # be a diagnostic that lies about which retrievers ran.
+        return JSONResponse(
+            status_code=exc.status_code or 502,
+            content=ErrorResponse(status_code=exc.status_code or 502, message=str(exc)).model_dump(),
+        )
+    if report is None:
+        return JSONResponse(
+            status_code=404,
+            content=ErrorResponse(status_code=404, message="Knowledge base not found").model_dump(),
+        )
+    return SuccessResponse(status_code=200, message="Precision retrieval trace", data=report)

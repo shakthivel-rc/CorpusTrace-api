@@ -510,6 +510,27 @@ RAG_MODE_RECOMMENDATIONS: dict[str, dict] = {
             "balanced default serves it best."
         ),
     },
+    # Justified by what `rag/precision/` mechanically does, like every entry above.
+    # Small chunks normally trade context away for precision; this is the one mode where
+    # they do not, because parent-chunk recovery hands the surrounding siblings back at the
+    # end. So the recommendation is the small preset — and the overlap is 0, which no other
+    # mode recommends: overlap exists to stop an answer being cut in half at a boundary, and
+    # parent recovery already solves that, while duplicated text is exactly what this mode's
+    # deduplication stage then has to spend candidate slots removing.
+    "high_precision": {
+        "label": "High Precision",
+        "strategy": STRATEGY_SENTENCE,
+        "chunk_size": 600,
+        "overlap": 0,
+        "why": (
+            "Ranks a wide candidate pool with BM25 and then re-scores the best of it by where "
+            "your words land inside each passage — how close together and in what order. Both "
+            "signals sharpen as chunks get smaller and more single-topic. Nothing is lost by "
+            "going small here: whichever passage wins, the mode returns the neighbouring "
+            "passages with it, so the context a larger chunk would have carried is restored "
+            "at the end rather than diluted at the start."
+        ),
+    },
 }
 
 

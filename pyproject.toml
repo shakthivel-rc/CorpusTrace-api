@@ -29,8 +29,17 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-# Ratchet floor. The tested surface (password policy, permission resolution, config,
-# token crypto, RAG chunking/scoring/graph, health + auth middleware, login/lockout)
-# is ~100% covered; large deliberately-untested subsystems (the RAG engine internals,
-# the LLM provider layer, SMTP) drag the global number down. Raise this, never lower it.
-fail_under = 40
+# Ratchet floor. Raise this, never lower it.
+#
+# Moved 40 -> 65 on 2026-08-20 with the High-Precision RAG mode: the whole-suite number is
+# 79.9% and `rag/service.py` reached 91%, so 40 had stopped being a floor and become a
+# decoration.
+#
+# 65 rather than something closer to 80 because this threshold applies to whatever ran, and
+# `pytest -m unit --cov` — the no-database subset — measures 68.0%. A floor above that would
+# fail the subset run the marker exists to make convenient, which is how a coverage gate
+# teaches people to pass `--no-cov`.
+#
+# What still drags the total down is deliberate: the LLM provider layer, SMTP, and the parts
+# of the RAG engine that only a real corpus exercises.
+fail_under = 65

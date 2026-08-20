@@ -28,8 +28,12 @@ from models.file import File
 from models.ingestion import IngestionJob, JOB_CANCELLED, JOB_QUEUED, JOB_RUNNING
 from models.rag import DocumentChunk, RagGraphEdge, RagGraphEntity
 from models.resource import Resource
-from rag import chunking
+from rag import chunking, precision
 from rag.chunking import IndexingConfig
+# The mode id lives beside the pipeline that implements it, so the string and the code
+# cannot drift apart. `rag.precision` imports nothing from this module — the dependency is
+# one-directional by construction, which is what keeps the new mode isolated.
+from rag.precision import RAG_MODE_HIGH_PRECISION
 # Imported by name rather than as a module: `vectors` is already the local variable holding
 # a batch of embeddings in two functions here, and a module shadowed by a list of floats
 # fails at the call site rather than at the import.
@@ -100,6 +104,10 @@ RAG_MODE_GRAPH = "graph_rag"
 RAG_MODE_CORRECTIVE = "corrective"
 RAG_MODE_MULTIMODAL = "multi_modal"
 RAG_MODE_AGENTIC = "agentic_rag"
+# `RAG_MODE_HIGH_PRECISION` is imported from `rag.precision` above rather than defined here.
+# Its pipeline is a self-contained package (`rag/precision/`) that shares this module's
+# tokenizer, term memo and dense retrieval by INJECTION, and touches none of the six modes
+# below — the only integration points are this set and one branch in `_plan_answer`.
 
 SUPPORTED_RAG_MODES = {
     RAG_MODE_CONTEXTUAL_HYBRID,
@@ -108,6 +116,7 @@ SUPPORTED_RAG_MODES = {
     RAG_MODE_CORRECTIVE,
     RAG_MODE_MULTIMODAL,
     RAG_MODE_AGENTIC,
+    RAG_MODE_HIGH_PRECISION,
 }
 
 STOPWORDS = {
@@ -525,6 +534,13 @@ def ingest_file(
         )
         db.flush()
 
+    # The High-Precision mode caches derived corpus statistics per resource (IDF, postings,
+    # section structure). Its fingerprint catches a re-upload — chunk ids are fresh UUIDs —
+    # but not embedding a base in place, which changes neither the chunk count nor the
+    # endpoint ids. Dropping the entry here is the explicit signal, and it is a no-op for
+    # every resource the mode has never been used on.
+    precision.invalidate_index(resource.id)
+
     return IngestedFile(
         chunks=chunks,
         page_count=page_count,
@@ -831,6 +847,7 @@ def purge_resource(db: Session, user_id: str, resource_id: str) -> dict:
 
     db.delete(resource)
     db.flush()
+    precision.invalidate_index(resource_id)
     return {
         "resource_id": resource_id,
         "chunks_deleted": chunks,
@@ -1037,7 +1054,24 @@ def _plan_answer(
     # by whichever mode runs and by both sufficiency gates. Inert when the base has no
     # embedded documents, which is the default and the state of every base uploaded before
     # per-document indexing settings existed.
-    semantic = _semantic_retrieval(db, user_id, resource_id, query, chunks)
+    semantic = _semantic_retrieval(
+        db,
+        user_id,
+        resource_id,
+        query,
+        chunks,
+        # One embedding call either way; only how many of the scored chunks are kept
+        # differs. High-Precision reranks a 50-100 candidate pool, so a top-8 dense list
+        # would starve the stage that is the whole point of the mode.
+        candidates=precision.get_precision_config().candidate_k
+        if mode == RAG_MODE_HIGH_PRECISION
+        else SEMANTIC_CANDIDATES,
+    )
+
+    # Set only by the High-Precision branch. It carries the parent context that
+    # `precision.evidence_for_synthesis` sends to a synthesiser, which the shared
+    # `_llm_evidence` has no way to know about — see the end of this function.
+    precision_outcome = None
 
     if mode == RAG_MODE_FUSION:
         results = _blend_semantic(_rag_fusion(query, chunks), semantic)
@@ -1072,6 +1106,16 @@ def _plan_answer(
         results, agent_notes = _agentic_rag(db, resource_id, query, chunks)
         results = _blend_semantic(results, semantic)
         answer = _compose_answer(query, results, mode, resource.resource_name, graph_notes=agent_notes)
+    elif mode == RAG_MODE_HIGH_PRECISION:
+        # The one integration point. `_blend_semantic` is deliberately NOT applied: the
+        # precision pipeline already fuses the dense side with configurable, normalised
+        # weights, and re-fusing that output by reciprocal rank against the same dense list
+        # would discard the ranking the mode exists to produce.
+        precision_outcome = _high_precision(resource_id, query, chunks, semantic)
+        results = _precision_results(precision_outcome)
+        answer = _compose_answer(
+            query, results, mode, resource.resource_name, graph_notes=_precision_notes(precision_outcome)
+        )
     else:
         results = _blend_semantic(_contextual_hybrid(query, chunks), semantic)
         answer = _compose_answer(query, results, mode, resource.resource_name)
@@ -1094,12 +1138,22 @@ def _plan_answer(
         )
 
     synthesize = bool(llm_provider and llm_model and results)
+    if not synthesize:
+        evidence: list[dict] = []
+    elif precision_outcome is not None:
+        # Parent-chunk recovery only pays for itself if the recovered context reaches the
+        # step that reads the passage. The citation anchor stays the CHILD chunk (below),
+        # so the evidence panel still highlights the passage that actually matched.
+        evidence = precision.evidence_for_synthesis(precision_outcome)
+    else:
+        evidence = _llm_evidence(results)
+
     return AnswerPlan(
         mode=mode,
         answer=answer,
         citations=_citations(results),
         resource_name=resource.resource_name,
-        evidence=_llm_evidence(results) if synthesize else [],
+        evidence=evidence,
         synthesize=synthesize,
     )
 
@@ -2165,7 +2219,13 @@ def _embedded_model_for_resource(db: Session, resource_id: str) -> tuple[str, st
 
 
 def _semantic_retrieval(
-    db: Session, user_id: str, resource_id: str, query: str, chunks: list[DocumentChunk]
+    db: Session,
+    user_id: str,
+    resource_id: str,
+    query: str,
+    chunks: list[DocumentChunk],
+    *,
+    candidates: int = SEMANTIC_CANDIDATES,
 ) -> _SemanticRetrieval:
     """Rank chunks by similarity to the question, or return an inert result.
 
@@ -2213,7 +2273,13 @@ def _semantic_retrieval(
             scored.append((similarity, chunk))
 
     scored.sort(key=lambda item: item[0], reverse=True)
-    top = scored[:SEMANTIC_CANDIDATES]
+    # `candidates` defaults to SEMANTIC_CANDIDATES, so every existing caller and every
+    # existing mode sees byte-identical behaviour. The High-Precision mode asks for a deeper
+    # pool because it reranks one — and it asks HERE rather than embedding the question a
+    # second time, so a precision question still costs exactly one embedding call.
+    # `top_similarity` is the top-1 similarity either way, so the sufficiency gate that
+    # reads it is unaffected by the depth.
+    top = scored[:max(candidates, 1)]
     return _SemanticRetrieval(
         results=[
             RetrievalResult(chunk=chunk, score=similarity, reason=f"semantic similarity {similarity:.2f}")
@@ -2335,6 +2401,149 @@ def _blend_semantic(
         RetrievalResult(chunk=by_id[chunk_id], score=score, reason="; ".join(reasons[chunk_id][:3]))
         for chunk_id, score in ordered
     ]
+
+
+# ---------------------------------------------------------------------------
+# High-Precision Non-LLM RAG
+#
+# The mode's pipeline lives in `rag/precision/`, which imports nothing from this module.
+# These three adapters are the entire seam: they hand the package this module's tokenizer,
+# its per-chunk scoring memo and the dense candidates the one embedding call already
+# produced, and convert what comes back into the `RetrievalResult` shape the rest of this
+# file speaks. Nothing here changes what any other mode retrieves.
+# ---------------------------------------------------------------------------
+
+
+def _precision_terms(chunk: DocumentChunk) -> dict[str, int]:
+    """The chunk's term map, taken from the memo the other modes already populate.
+
+    Reusing `_scoring_data` rather than re-parsing `terms_json` is the difference between
+    the precision index costing one JSON parse per chunk and costing a second one: on a
+    500-chunk base that parse was measured at a fifth of all retrieval CPU (CLAUDE.md §9).
+    """
+    return _scoring_data(chunk).terms
+
+
+def _high_precision(
+    resource_id: str,
+    query: str,
+    chunks: list[DocumentChunk],
+    semantic: _SemanticRetrieval,
+    overrides: dict | None = None,
+):
+    """Run the precision pipeline over one resource's chunks."""
+    return precision.retrieve(
+        precision.PipelineInputs(
+            resource_id=resource_id,
+            query=query,
+            chunks=chunks,
+            tokenize=_tokenize,
+            terms_of=_precision_terms,
+            extract_entities=_extract_entities,
+            # Already ranked, and already paid for: `_semantic_retrieval` ran once above.
+            # Empty for every knowledge base with no embeddings, which is the default —
+            # the pipeline then runs lexically, exactly as BM25-only.
+            dense_candidates=[(result.chunk.id, result.score) for result in semantic.results],
+            # `vector_of` is deliberately not supplied. MMR would use cosine redundancy if
+            # it were, but building that map is a second `_stored_vectors` query per
+            # question for a diversity penalty that term-set overlap already measures well
+            # on text. Add it only if a benchmark shows MMR is the weak stage.
+            config=precision.get_precision_config().with_overrides(overrides),
+        )
+    )
+
+
+def _precision_results(outcome) -> list[RetrievalResult]:
+    """Convert precision results into the shape citations and the evidence gate expect.
+
+    The CHILD chunk stays the anchor. Parent context travels separately (see
+    `precision.evidence_for_synthesis`), because `_citations` rides back on a size-bounded
+    response header and the evidence view highlights the passage that actually matched.
+    """
+    return [
+        RetrievalResult(
+            chunk=result.chunk,
+            score=result.score,
+            reason=_precision_reason(result),
+        )
+        for result in outcome.results
+    ]
+
+
+def _precision_reason(result) -> str:
+    parts = [f"{result.retrieval_method} retrieval"]
+    if result.rerank_score is not None:
+        parts.append(f"cross-encoder {result.rerank_score:.2f}")
+    if result.metadata and result.metadata.heading:
+        parts.append(f'section "{result.metadata.heading}"')
+    return "; ".join(parts)
+
+
+def _precision_notes(outcome) -> str:
+    """One line naming what the pipeline did, for the extractive answer.
+
+    The brief asks that the mode be identifiable from its output. `_compose_answer` already
+    prints the mode name; this adds the part a reader can act on — whether the dense side
+    participated, whether a reranker ran, and whether a metadata filter narrowed the search.
+    """
+    trace = outcome.trace
+    if not trace.final_chunk_ids:
+        return ""
+    stages = {record.stage: record for record in trace.stages}
+    bits: list[str] = []
+    pool = stages.get("candidate_pool")
+    if pool:
+        bits.append(f"{pool.count_in} candidates")
+    if stages.get("dense") and stages["dense"].count_out:
+        bits.append("lexical + embedding retrieval")
+    else:
+        bits.append("lexical retrieval")
+    if trace.reranker_backend and trace.reranker_backend != precision.RERANKER_NONE:
+        bits.append(f"{trace.reranker_backend} cross-encoder rerank")
+    applied = [key for key, value in (trace.metadata_filters.get("applied") or {}).items() if value]
+    if applied:
+        bits.append("filtered on " + ", ".join(applied))
+    return "Retrieval: " + ", ".join(bits) + "."
+
+
+def explain_precision_retrieval(
+    db: Session,
+    user_id: str,
+    resource_id: str,
+    query: str,
+    overrides: dict | None = None,
+) -> dict | None:
+    """The full trace for one precision query — the observability surface for this mode.
+
+    Returns None when the resource is not the caller's or does not exist, so the route can
+    answer 404 without a second ownership check. Read-only: it persists nothing, writes no
+    chat history and is not rate-limited beyond the permission the route already requires.
+    """
+    resource = get_user_resource(db, user_id, resource_id)
+    if not resource:
+        return None
+    chunks = (
+        db.query(DocumentChunk)
+        .options(*_DEFER_VECTORS)
+        .filter(DocumentChunk.resource_id == resource_id)
+        .order_by(DocumentChunk.chunk_index.asc())
+        .all()
+    )
+    config = precision.get_precision_config().with_overrides(overrides)
+    semantic = _semantic_retrieval(
+        db, user_id, resource_id, query, chunks, candidates=config.candidate_k
+    )
+    outcome = _high_precision(resource_id, query, chunks, semantic, overrides=overrides)
+    return {
+        "mode": RAG_MODE_HIGH_PRECISION,
+        "resource_id": resource_id,
+        "resource_name": resource.resource_name,
+        "chunks_indexed": len(chunks),
+        "embeddings_available": bool(semantic.results),
+        "embedding_model": semantic.model,
+        "trace": outcome.trace.to_dict(),
+        "results": [result.to_dict() for result in outcome.results],
+    }
 
 
 def _rag_fusion(query: str, chunks: list[DocumentChunk]) -> list[RetrievalResult]:

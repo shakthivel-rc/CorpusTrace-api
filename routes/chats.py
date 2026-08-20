@@ -10,6 +10,7 @@ from controllers.chat_controller import (
     fetch_source_chunk,
     fetch_source_file,
     get_brain_list,
+    explain_precision_query,
     get_indexing_options,
     get_ingestion_job,
     get_ingestion_jobs,
@@ -19,7 +20,7 @@ from controllers.chat_controller import (
     restore_brain,
     upload_documents,
 )
-from schemas.chat import ResourceRenameRequest
+from schemas.chat import PrecisionTraceRequest, ResourceRenameRequest
 from schemas.response import SuccessResponse, ErrorResponse
 from dependencies.auth import check_permissions
 from sqlalchemy.orm import Session
@@ -231,3 +232,20 @@ def stop_ingestion_job(job_id: str, request: Request, db: Session = Depends(get_
 @resources_router.get("/{resource_id}/documents", dependencies=[Depends(check_permissions(["ai_access"]))])
 def read_resource_documents(resource_id: str, request: Request, db: Session = Depends(get_db)):
     return get_resource_documents(request, db, resource_id)
+
+
+@resources_router.post(
+    "/{resource_id}/precision-trace", dependencies=[Depends(check_permissions(["ai_access"]))]
+)
+def read_precision_trace(
+    resource_id: str,
+    payload: PrecisionTraceRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Explain how the High-Precision mode ranked one query. Diagnostic; persists nothing.
+
+    `def`, not `async def`: the chunk load, the corpus index build and the optional
+    embedding call are all blocking, so this must reach the threadpool.
+    """
+    return explain_precision_query(request, db, resource_id, payload.query, payload.overrides)
